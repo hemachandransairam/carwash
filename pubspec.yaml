@@ -45,6 +45,7 @@ dependencies:
   equatable: ^2.0.8
   signals_flutter: ^6.3.0
   awesome_snackbar_content: ^0.1.1
+  supabase_flutter: ^2.8.2
 
 dev_dependencies:
   flutter_test:

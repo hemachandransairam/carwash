@@ -383,16 +383,16 @@ class _BookServicesPageState extends State<BookServicesPage> {
           else if (_savedVehicles.isNotEmpty)
             ..._savedVehicles.map((vehicle) {
               final isSelected =
-                  _selectedVehicleType == vehicle['type'] &&
-                  _selectedVehicleBrand == vehicle['brand'];
+                  _selectedVehicleType == vehicle['vehicle_type'] &&
+                  _selectedVehicleBrand == vehicle['brand_name'];
               return GestureDetector(
                 onTap: () {
                   setState(() {
-                    _selectedVehicleType = vehicle['type'];
-                    _selectedVehicleBrand = vehicle['brand'];
-                    _selectedVehicleName = vehicle['name'];
-                    _selectedVehicleModel = vehicle['model'];
-                    _selectedVehicleLicense = vehicle['license_number'];
+                    _selectedVehicleType = vehicle['vehicle_type'];
+                    _selectedVehicleBrand = vehicle['brand_name'];
+                    _selectedVehicleName = vehicle['name'] ?? vehicle['car_model'];
+                    _selectedVehicleModel = vehicle['car_model'];
+                    _selectedVehicleLicense = vehicle['license'];
                     // Automatically move to next step
                     _currentStep = 1;
                   });
@@ -429,7 +429,7 @@ class _BookServicesPageState extends State<BookServicesPage> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Image.asset(
-                          _getVehicleImage(vehicle['type']),
+                          _getVehicleImage(vehicle['vehicle_type']),
                           fit: BoxFit.contain,
                           errorBuilder: (context, error, stackTrace) {
                             return const Icon(
@@ -446,10 +446,10 @@ class _BookServicesPageState extends State<BookServicesPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              vehicle['model'] != null &&
-                                      vehicle['model'].toString().isNotEmpty
-                                  ? vehicle['model'] // Show model if available
-                                  : vehicle['name'], // Fallback to 'Brand Type'
+                              vehicle['car_model'] != null &&
+                                      vehicle['car_model'].toString().isNotEmpty
+                                  ? vehicle['car_model'] // Show model if available
+                                  : (vehicle['name'] ?? 'Vehicle'), 
                               style: const TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -460,13 +460,13 @@ class _BookServicesPageState extends State<BookServicesPage> {
                             // Subtitle: Brand • Type • License (masked)
                             Text(
                               [
-                                    vehicle['brand'],
-                                    vehicle['type'],
-                                    if (vehicle['license_number'] != null &&
-                                        vehicle['license_number']
+                                    vehicle['brand_name'],
+                                    vehicle['vehicle_type'],
+                                    if (vehicle['license'] != null &&
+                                        vehicle['license']
                                             .toString()
                                             .isNotEmpty)
-                                      "•••• ${vehicle['license_number'].toString().substring(vehicle['license_number'].toString().length > 4 ? vehicle['license_number'].toString().length - 4 : 0)}",
+                                      "•••• ${vehicle['license'].toString().substring(vehicle['license'].toString().length > 4 ? vehicle['license'].toString().length - 4 : 0)}",
                                   ]
                                   .where(
                                     (e) => e != null && e.toString().isNotEmpty,

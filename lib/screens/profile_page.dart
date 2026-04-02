@@ -34,21 +34,21 @@ class _ProfilePageState extends State<ProfilePage> {
       try {
         final data =
             await MockDatabase.instance
-                .from('profiles')
+                .from('users')
                 .select()
                 .eq('id', user['id'])
-                .single()
-                .build<Map<String, dynamic>>();
+                .maybeSingle()
+                .build<Map<String, dynamic>?>();
         if (mounted) {
           setState(() {
-            _userData = data as Map<String, dynamic>?;
+            _userData = data;
             _isLoading = false;
           });
         }
       } catch (e) {
         if (mounted) {
           setState(() {
-            _userData = {'full_name': 'New User', 'email': user['email'] ?? ''};
+            _userData = {'name': 'New User', 'email': user['email'] ?? ''};
             _isLoading = false;
           });
         }
@@ -121,8 +121,10 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                   // Content
-                  Column(
-                    children: [
+                  SingleChildScrollView(
+                    physics: const ClampingScrollPhysics(),
+                    child: Column(
+                      children: [
                       SizedBox(
                         height:
                             MediaQuery.of(context).padding.top +
@@ -176,7 +178,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                       const SizedBox(height: 16), // Increased from 12
                       Text(
-                        _userData?['full_name'] ?? "User Name",
+                        _userData?['name'] ?? "User Name",
                         style: const TextStyle(
                           fontSize: 24, // Increased from 20
                           fontWeight: FontWeight.w800,
@@ -297,8 +299,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+              ],
+            ),
     );
   }
 

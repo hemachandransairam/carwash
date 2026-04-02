@@ -1,284 +1,238 @@
-import 'dart:async';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import '../../config/supabase_config.dart';
 
 class MockDatabase {
   static final MockDatabase instance = MockDatabase._();
-  MockDatabase._() {
-    _initData();
-  }
+  MockDatabase._();
 
   final MockAuth auth = MockAuth();
+  SupabaseClient get client => Supabase.instance.client;
 
-  MockDatabase get client => this;
-  
-  // In-memory tables
-  final Map<String, List<Map<String, dynamic>>> _tables = {
-    'profiles': [],
-    'bookings': [],
-    'vehicles': [],
-    'addresses': [],
-    'feedback': [],
-    'notifications': [],
-  };
-
-  final Map<String, StreamController<List<Map<String, dynamic>>>> _controllers = {};
-
-  void _initData() {
-    // Add some initial mock data
-    _tables['profiles'] = [
-      {'id': 'mock-user-id', 'full_name': 'Demo User', 'phone': '1234567890'}
-    ];
-    _tables['vehicles'] = [
-      {'id': 'v1', 'user_id': 'mock-user-id', 'name': 'Tesla Model 3', 'type': 'Sedan'},
-      {'id': 'v2', 'user_id': 'mock-user-id', 'name': 'BMW X5', 'type': 'SUV'},
-    ];
-    _tables['bookings'] = [
-      {
-        'id': 'b1',
-        'user_id': 'mock-user-id',
-        'vehicle_name': 'Tesla Model 3',
-        'vehicle_type': 'Sedan',
-        'status': 'confirmed',
-        'booking_date': '2024-04-05',
-        'booking_time': '10:00 AM',
-        'created_at': DateTime.now().toIso8601String(),
-      }
-    ];
-  }
-
-  MockQueryBuilder from(String table) {
-    return MockQueryBuilder(table, this);
+  SupabaseQueryBuilder from(String table) {
+    // Exact mapping for your latest schema
+    final Map<String, String> tableMap = {
+      'profiles': 'users',
+      'user_addresses': 'addresses',
+      'personal_details': 'users',
+      'user_vehicles': 'vehicles',
+    };
+    
+    final targetTable = tableMap[table] ?? table;
+    return client.from(targetTable);
   }
 
   Stream<List<Map<String, dynamic>>> getStream(String table, {required List<String> primaryKey}) {
-    _controllers.putIfAbsent(table, () => StreamController<List<Map<String, dynamic>>>.broadcast());
-    
-    // Send initial data
-    Timer(Duration.zero, () {
-      _controllers[table]?.add(_tables[table] ?? []);
-    });
-    
-    return _controllers[table]!.stream;
-  }
-
-  void _notifyChange(String table) {
-    _controllers[table]?.add(_tables[table] ?? []);
+    final Map<String, String> tableMap = {
+      'profiles': 'users',
+      'user_addresses': 'addresses',
+      'user_vehicles': 'vehicles',
+    };
+    final targetTable = tableMap[table] ?? table;
+    return client.from(targetTable).stream(primaryKey: primaryKey);
   }
 }
 
 class MockAuth {
-  Map<String, dynamic>? _currentUser = {
-    'id': 'mock-user-id',
-    'phone': '1234567890',
-  };
+  Map<String, dynamic>? _sessionUser;
+  final ValueNotifier<bool> isLoggedIn = ValueNotifier<bool>(false);
 
-  Map<String, dynamic>? get currentUser => _currentUser;
-
-  Future<void> signInWithOtp({required String phone}) async {
-    // Any phone number works in mock
-    debugPrint("Mock: Signing in with phone $phone");
+  Future<void> init() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userJson = prefs.getString('saved_user_session');
+    if (userJson != null) {
+      _sessionUser = jsonDecode(userJson);
+      isLoggedIn.value = true;
+    }
   }
 
-  Future<void> verifyOtp({required String phone, required String token, required dynamic type}) async {
-    // Any code works in mock
-    _currentUser = {
-      'id': 'mock-user-id',
-      'phone': phone,
+  void _saveSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_sessionUser != null) {
+      await prefs.setString('saved_user_session', jsonEncode(_sessionUser));
+      isLoggedIn.value = true;
+    } else {
+      await prefs.remove('saved_user_session');
+      isLoggedIn.value = false;
+    }
+  }
+
+  void updateSessionUser(Map<String, dynamic> user) {
+    _sessionUser = user;
+    _saveSession();
+  }
+
+  Map<String, dynamic>? get currentUser {
+    if (_sessionUser != null) return _sessionUser;
+    
+    final authUser = Supabase.instance.client.auth.currentUser;
+    if (authUser == null) return null;
+    
+    return {
+      'id': authUser.id, 
+      'phone': authUser.phone,
+      'email': authUser.email,
+      'user_metadata': authUser.userMetadata,
     };
   }
 
-  Future<void> signOut() async {
-    _currentUser = null;
-  }
-}
-
-class MockQueryBuilder {
-  final String table;
-  final MockDatabase db;
-
-  List<Map<String, dynamic>> _workingList = [];
-  bool _isSingle = false;
-  bool _isMaybeSingle = false;
-
-  // Pending actions
-  Map<String, dynamic>? _updateValues;
-  bool _isDelete = false;
-  dynamic _insertValues;
-  bool _isUpsert = false;
-
-  MockQueryBuilder(this.table, this.db) {
-    _workingList = List.from(db._tables[table] ?? []);
+  String _normalizePhone(String phone) {
+    final d = phone.replaceAll(RegExp(r'\D'), '');
+    return d.length == 10 ? '91$d' : d;
   }
 
-  MockQueryBuilder select([Object? columns]) {
-    return this;
-  }
+  /// DIRECT META WhatsApp API FLOW (To Debug the Error)
+  Future<void> signInWithOtp({required String phone}) async {
+    final String cleanPhone = _normalizePhone(phone);
+    final String generatedOtp = (100000 + (999999 - 100000) * (DateTime.now().millisecond / 1000)).floor().toString();
 
-  MockQueryBuilder eq(String column, dynamic value) {
-    _workingList = _workingList.where((item) => item[column] == value).toList();
-    return this;
-  }
+    // 1. Save to Supabase otp_store directly
+    await Supabase.instance.client.from('otp_store').upsert({
+      'phone': cleanPhone,
+      'otp': generatedOtp,
+      'expires_at': DateTime.now().add(const Duration(minutes: 5)).toIso8601String(),
+    }).build();
 
-  MockQueryBuilder order(String column, {bool ascending = true}) {
-    _workingList.sort((a, b) {
-      final valA = a[column];
-      final valB = b[column];
-      if (valA == null || valB == null) return 0;
-      return ascending
-          ? valA.toString().compareTo(valB.toString())
-          : valB.toString().compareTo(valA.toString());
-    });
-    return this;
-  }
+    print("--- DIRECT SENDING TO WHATSAPP ---");
+    final String token = "EAANF8ZCkAkSMBQ7fXCC1HM6oW0XIuChDlECEAXZB4az6JqpdiEXZBGCrbdK1lgHJtUw8qTZBeF1HeudHlF0qKZBPnTXBpsQWARZBcOowVccujNWT7kgpSkQkONpeMGZAAWjPLeSu6DOhFQomcTAaKQWg34qaSf5PJMONg27wqewcZC9tSczIMPg8DvykReGg9kkTZA67mLZBC4lDRnMA738KHIpUZAgCuiFZACZCBSp4xKZAda";
+    final String phoneId = "1069501402909893";
 
-  MockQueryBuilder limit(int count) {
-    if (_workingList.length > count) {
-      _workingList = _workingList.sublist(0, count);
-    }
-    return this;
-  }
-
-  MockQueryBuilder single() {
-    _isSingle = true;
-    _isMaybeSingle = false;
-    return this;
-  }
-
-  MockQueryBuilder maybeSingle() {
-    _isSingle = true;
-    _isMaybeSingle = true;
-    return this;
-  }
-
-  /// Returns the actual [Future] for this query.
-  /// Use this when a real [Future] is required (e.g. in [FutureBuilder]).
-  Future<T> build<T>() => _future.then((v) => v as T);
-
-  MockQueryBuilder insert(dynamic values) {
-    _insertValues = values;
-    return this;
-  }
-
-  MockQueryBuilder upsert(dynamic values) {
-    _insertValues = values;
-    _isUpsert = true;
-    return this;
-  }
-
-  MockQueryBuilder update(Map<String, dynamic> values) {
-    _updateValues = values;
-    return this;
-  }
-
-  MockQueryBuilder delete() {
-    _isDelete = true;
-    return this;
-  }
-
-  // To simulate the Future response
-  @override
-  dynamic noSuchMethod(Invocation invocation) {
-    return super.noSuchMethod(invocation);
-  }
-
-  // Future interface
-  Future<dynamic> get _future async {
-    if (_insertValues != null) {
-      if (_isUpsert) {
-        final list =
-            _insertValues is List
-                ? _insertValues as List
-                : [_insertValues as Map<String, dynamic>];
-        for (var v in list) {
-          final id = v['id'];
-          if (id != null) {
-            final index = db._tables[table]!.indexWhere((e) => e['id'] == id);
-            if (index != -1) {
-              db._tables[table]![index].addAll(v);
-            } else {
-              db._tables[table]!.add(v);
+    final response = await http.post(
+      Uri.parse("https://graph.facebook.com/v17.0/$phoneId/messages"),
+      headers: {
+        "Authorization": "Bearer $token",
+        "Content-Type": "application/json",
+      },
+      body: jsonEncode({
+        "messaging_product": "whatsapp",
+        "to": cleanPhone, 
+        "type": "template",
+        "template": {
+          "name": "otp_verification",
+          "language": {"code": "en_US"},
+          "components": [
+            {
+              "type": "body",
+              "parameters": [
+                {"type": "text", "text": generatedOtp}
+              ]
             }
-          } else {
-            final newRow = Map<String, dynamic>.from(v);
-            newRow['id'] ??= DateTime.now().millisecondsSinceEpoch.toString();
-            newRow['created_at'] ??= DateTime.now().toIso8601String();
-            db._tables[table]!.add(newRow);
-          }
+          ]
         }
-      } else {
-        final list =
-            _insertValues is List
-                ? _insertValues as List
-                : [_insertValues as Map<String, dynamic>];
-        for (var v in list) {
-          final newRow = Map<String, dynamic>.from(v);
-          newRow['id'] ??= DateTime.now().millisecondsSinceEpoch.toString();
-          newRow['created_at'] ??= DateTime.now().toIso8601String();
-          db._tables[table]!.add(newRow);
-        }
-      }
-      db._notifyChange(table);
-      return _insertValues;
-    } else if (_updateValues != null) {
-      for (var item in _workingList) {
-        final index = db._tables[table]!.indexWhere(
-          (e) => e['id'] == item['id'],
-        );
-        if (index != -1) {
-          db._tables[table]![index].addAll(_updateValues!);
-        }
-      }
-      db._notifyChange(table);
-      return _workingList;
-    } else if (_isDelete) {
-      final idsToRemove = _workingList.map((e) => e['id']).toList();
-      db._tables[table]!.removeWhere(
-        (element) => idsToRemove.contains(element['id']),
-      );
-      db._notifyChange(table);
-      return _workingList;
+      }),
+    );
+    
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      // Provide exact JSON error from Meta
+      final err = jsonDecode(response.body);
+      final msg = err['error']?['message'] ?? response.body;
+      throw Exception("Meta Error: $msg");
     }
-
-    if (_isSingle) {
-      if (_workingList.isEmpty) {
-        if (_isMaybeSingle) return null;
-        throw Exception("No data found in $table");
-      }
-      return _workingList.first;
-    }
-    return _workingList;
   }
 
-  Future<T> then<T>(
-    FutureOr<T> Function(dynamic) onValue, {
-    Function? onError,
-  }) => _future.then(onValue, onError: onError);
+  /// Custom OTP Verification + Backend Lookup Logic
+  Future<void> verifyOtp({required String phone, required String token, required dynamic type}) async {
+    final String cleanPhone = _normalizePhone(phone);
 
-  // Stream support
-  MockStreamBuilder stream({required List<String> primaryKey}) {
-    return MockStreamBuilder(
-      this,
-      db.getStream(table, primaryKey: primaryKey),
+    // 1. Check if user already exists
+    final checkRes = await http.post(
+      Uri.parse('${SupabaseConfig.url}/functions/v1/check-phone'),
+      headers: {
+        'Content-Type': 'application/json', 
+        'apikey': SupabaseConfig.anonKey,
+        'Authorization': 'Bearer ${SupabaseConfig.anonKey}',
+      },
+      body: jsonEncode({'phone': cleanPhone}),
     );
+    
+    if (checkRes.statusCode < 200 || checkRes.statusCode >= 300) {
+      throw Exception("User lookup failed: ${checkRes.body}");
+    }
+    
+    final bool exists = jsonDecode(checkRes.body)['exists'] == true;
+
+    // 2. Verify OTP with Backend Edge Function
+    if (exists) {
+      // Old user: Login
+      final loginRes = await http.post(
+        Uri.parse('${SupabaseConfig.url}/functions/v1/verify-otp'),
+        headers: {
+          'Content-Type': 'application/json', 
+          'apikey': SupabaseConfig.anonKey,
+          'Authorization': 'Bearer ${SupabaseConfig.anonKey}',
+        },
+        body: jsonEncode({'phone': cleanPhone, 'otp': token, 'mode': 'login'}),
+      );
+      
+      if (loginRes.statusCode < 200 || loginRes.statusCode >= 300) {
+        throw Exception("Invalid OTP");
+      }
+      
+      final data = jsonDecode(loginRes.body);
+      
+      // Try to fetch full profile from DB
+      final profile = await Supabase.instance.client
+          .from('users')
+          .select()
+          .eq('phone', cleanPhone)
+          .maybeSingle();
+
+      if (profile != null) {
+        _sessionUser = profile;
+      } else {
+        _sessionUser = {'id': data['user_id'], 'phone': cleanPhone, 'is_new': false};
+      }
+    } else {
+      // New User: Register stub account to verify OTP
+      final regRes = await http.post(
+        Uri.parse('${SupabaseConfig.url}/functions/v1/verify-otp'),
+        headers: {
+          'Content-Type': 'application/json', 
+          'apikey': SupabaseConfig.anonKey,
+          'Authorization': 'Bearer ${SupabaseConfig.anonKey}',
+        },
+        body: jsonEncode({
+          'phone': cleanPhone, 
+          'otp': token, 
+          'mode': 'register',
+          'name': '',
+          'email': '',
+          'role': 'CUSTOMER'
+        }),
+      );
+      
+      if (regRes.statusCode < 200 || regRes.statusCode >= 300) {
+        throw Exception("Invalid OTP");
+      }
+      
+      final data = jsonDecode(regRes.body);
+      _sessionUser = {'id': data['user_id'], 'phone': phone, 'is_new': true};
+    }
+    
+    _saveSession();
+  }
+
+
+  Future<void> signOut() async {
+    _sessionUser = null;
+    _saveSession();
+    await Supabase.instance.client.auth.signOut();
   }
 }
 
-class MockStreamBuilder extends StreamView<List<Map<String, dynamic>>> {
-  final MockQueryBuilder builder;
-
-  MockStreamBuilder(this.builder, Stream<List<Map<String, dynamic>>> stream)
-    : super(stream);
-
-  MockStreamBuilder eq(String column, dynamic value) {
-    // This is a mock, we don't actually filter the stream yet
-    return this;
+extension PostgrestBuilderExtension on PostgrestFilterBuilder {
+  Future<T> build<T>() async {
+    final response = await this;
+    return response as T;
   }
+}
 
-  MockStreamBuilder order(String column, {bool ascending = true}) {
-    return this;
-  }
-
-  MockStreamBuilder limit(int count) {
-    return this;
+extension PostgrestTransformBuilderExtension on PostgrestTransformBuilder {
+  Future<T> build<T>() async {
+    final response = await this;
+    return response as T;
   }
 }

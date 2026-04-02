@@ -46,8 +46,11 @@ class _ManageAddressPageState extends State<ManageAddressPage> {
     if (user != null) {
       await MockDatabase.instance.from('user_addresses').insert({
         'user_id': user['id'],
-        'label': _selectedLabel,
-        'address': _addressController.text,
+        'address_type': _selectedLabel == 'Office' ? 'WORK' : _selectedLabel.toUpperCase(),
+        'city': 'Default City', // Required by your new schema
+        'state': 'Default State', // Required by your new schema
+        'pincode': '000000', // Required by your new schema
+        'street': _addressController.text,
       }).build<void>();
       _addressController.clear();
       _fetchAddresses();
@@ -95,8 +98,8 @@ class _ManageAddressPageState extends State<ManageAddressPage> {
                               itemBuilder: (context, index) {
                                 final addr = _addresses[index];
                                 return buildSavedAddressTile(
-                                  label: addr['label'],
-                                  address: addr['address'],
+                                  label: addr['address_type']?.toString() ?? 'Home',
+                                  address: addr['street'] ?? addr['city'] ?? '',
                                   isSelected: false,
                                   onTap: () {},
                                   onDelete: () => _deleteAddress(addr['id']),

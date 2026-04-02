@@ -27,16 +27,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
       try {
         final data =
             await MockDatabase.instance
-                .from('profiles')
+                .from('users')
                 .select()
                 .eq('id', user['id'])
-                .single()
-                .build<Map<String, dynamic>>();
+                .maybeSingle()
+                .build<Map<String, dynamic>?>();
         if (mounted) {
           setState(() {
-            _nameController.text = data['full_name'] ?? '';
-            _emailController.text = data['email'] ?? '';
-            _phoneController.text = data['phone'] ?? '';
+            _nameController.text = data?['name'] ?? '';
+            _emailController.text = data?['email'] ?? '';
+            _phoneController.text = data?['phone'] ?? '';
             _isLoading = false;
           });
         }
@@ -60,9 +60,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
     setState(() => _isLoading = true);
 
     try {
-      await MockDatabase.instance.from('profiles').upsert({
+      await MockDatabase.instance.from('users').upsert({
         'id': user['id'],
-        'full_name': _nameController.text,
+        'name': _nameController.text,
         'email': _emailController.text,
         'phone': _phoneController.text,
         'updated_at': DateTime.now().toIso8601String(),

@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../core/services/mock_database.dart';
+import '../core/services/auth_service.dart';
 import 'complete_profile.dart';
 import '../screens/home_screen.dart';
 
 class VerifyCodePage extends StatefulWidget {
   final String phoneNumber;
-  const VerifyCodePage({super.key, required this.phoneNumber});
+  final bool isSignUp;
+  const VerifyCodePage({super.key, required this.phoneNumber, this.isSignUp = false});
 
   @override
   State<VerifyCodePage> createState() => _VerifyCodePageState();
@@ -36,47 +37,41 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
 
     setState(() => _isLoading = true);
     try {
-      final responseUser = await MockDatabase.instance.auth.verifyOtp(
-        phone: widget.phoneNumber,
-        token: otp,
-        type: null,
-      );
-
-      final user = MockDatabase.instance.auth.currentUser;
-      if (user != null) {
-        // Successful login, now check if they are a new user
-        
-        // Let's check for a profile in 'profiles' table
-        final Map<String, dynamic>? profile = await MockDatabase.instance
-            .from('profiles')
-            .select()
-            .eq('id', user['id'])
-            .maybeSingle()
-            .build();
+      if (widget.isSignUp) {
+        // Register the new user
+        await AuthService().register(
+          name: '',
+          email: '',
+          phone: widget.phoneNumber,
+          otp: otp,
+          role: 'CUSTOMER',
+        );
 
         if (mounted) {
-          if (profile == null) {
-            // New user, go to complete profile
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (context) => const CompleteProfilePage()),
-              (route) => false,
-            );
-          } else {
-            // Old user, go home
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (context) => const HomeScreen()),
-              (route) => false,
-            );
-          }
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const CompleteProfilePage()),
+            (route) => false,
+          );
+        }
+      } else {
+        // Login existing user
+        await AuthService().login(widget.phoneNumber, otp);
+        
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const HomeScreen()),
+            (route) => false,
+          );
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Invalid OTP: $e")));
+        String msg = e.toString().replaceFirst('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Invalid OTP: $msg"), backgroundColor: Colors.redAccent),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -133,9 +128,18 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
               ),
               TextButton(
                 onPressed: _isLoading ? null : () async {
-                  await MockDatabase.instance.auth.signInWithOtp(phone: widget.phoneNumber);
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("OTP Resent")));
+                  setState(() => _isLoading = true);
+                  try {
+                    await AuthService().sendOtp(widget.phoneNumber);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("OTP Resent")));
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+                    }
+                  } finally {
+                    if (mounted) setState(() => _isLoading = false);
                   }
                 },
                 child: const Text(
@@ -184,7 +188,7 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
   Widget _otpBox(BuildContext context, int index) {
     return SizedBox(
       height: 60,
-      width: 45,
+      width: 42,
       child: TextField(
         controller: _otpControllers[index],
         autofocus: index == 0,

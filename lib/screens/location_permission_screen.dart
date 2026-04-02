@@ -66,9 +66,10 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
         return;
       }
 
-      // Get current position
+      // Get current position with a 15-second timeout
       Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        desiredAccuracy: LocationAccuracy.medium, 
+        timeLimit: const Duration(seconds: 15),
       );
 
       setState(() {
@@ -77,9 +78,9 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
             'Location: ${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
       });
 
-      // Navigate to Notification Permission Screen
+      // Navigate to Notification Permission Screen (Replacement)
       if (mounted) {
-        Navigator.push(
+        Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (context) => const NotificationPermissionScreen(),

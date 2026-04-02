@@ -58,13 +58,18 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
       final user = MockDatabase.instance.auth.currentUser;
       if (user == null) return;
 
-      await MockDatabase.instance.from('profiles').insert({
-        'id': user['id'],
-        'full_name': name,
+      final result = await MockDatabase.instance.from('users').upsert({
+        if (user['id'] != null) 'id': user['id'],
+        'name': name,
         'phone': '$_selectedCountryCode${_phoneController.text.trim()}',
         'gender': _selectedGender,
-        'updated_at': DateTime.now().toIso8601String(),
-      }).build<void>();
+        'created_at': DateTime.now().toIso8601String(),
+      }).select().maybeSingle().build<Map<String, dynamic>?>();
+
+      if (result != null) {
+        // Update the mock session with the full profile
+        MockDatabase.instance.auth.updateSessionUser(result);
+      }
 
       if (mounted) {
         Navigator.pushReplacement(

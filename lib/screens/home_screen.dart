@@ -232,21 +232,20 @@ class _HomeContentState extends State<HomeContent> {
     final user = MockDatabase.instance.auth.currentUser;
     if (user == null) return;
 
-    // Fetch recent addresses
+    // Fetch recent addresses from the addresses table instead of bookings
     final response = await MockDatabase.instance
-        .from('bookings')
-        .select('address_text')
+        .from('addresses')
+        .select('house_no, street, city')
         .eq('user_id', user['id'])
         .order('created_at', ascending: false)
-        .limit(
-          5,
-        ).build<List<Map<String, dynamic>>>(); // Get last 5 distinct(ish) addresses - doing client side distinct
+        .limit(5)
+        .build<List<Map<String, dynamic>>>();
 
     final List<String> recentAddresses = [];
     for (var r in response) {
-      if (r['address_text'] != null &&
-          !recentAddresses.contains(r['address_text'])) {
-        recentAddresses.add(r['address_text']);
+      final addr = "${r['house_no'] ?? ''} ${r['street'] ?? r['city'] ?? ''}".trim();
+      if (addr.isNotEmpty && !recentAddresses.contains(addr)) {
+        recentAddresses.add(addr);
       }
     }
 
@@ -448,28 +447,18 @@ class _HomeContentState extends State<HomeContent> {
                                 fontWeight: FontWeight.w400,
                               ),
                             ),
-                            FutureBuilder<Map<String, dynamic>>(
+                            FutureBuilder<Map<String, dynamic>?>(
                               future:
                                   MockDatabase.instance
-                                      .from('profiles')
-                                      .select(
-                                        'full_name',
-                                      ) // Assuming 'full_name' is the column name
-                                      .eq(
-                                        'id',
-                                        MockDatabase
-                                                .instance
-                                                .auth
-                                                .currentUser
-                                                ?['id'] ??
-                                            '',
-                                      )
-                                      .single()
-                                      .build<Map<String, dynamic>>(),
+                                      .from('users')
+                                      .select('name')
+                                      .eq('id', MockDatabase.instance.auth.currentUser?['id'] ?? '')
+                                      .maybeSingle()
+                                      .build<Map<String, dynamic>?>(),
                               builder: (context, snapshot) {
                                 if (snapshot.hasData) {
                                   final name =
-                                      snapshot.data!['full_name'] as String? ??
+                                      snapshot.data?['name'] as String? ??
                                       'User';
                                   return Text(
                                     name,
@@ -717,26 +706,32 @@ class _HomeContentState extends State<HomeContent> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    "${activeBooking['vehicle_name']}", // Removed Brand repetition
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF01102B),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      "${activeBooking['vehicle_name']}", 
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF01102B),
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
                                     ),
-                                  ),
-                                  Text(
-                                    activeBooking['vehicle_type'] ?? '',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.grey[600],
-                                      fontWeight: FontWeight.w500,
+                                    Text(
+                                      activeBooking['vehicle_type'] ?? '',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.grey[600],
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                               Container(
                                 padding: const EdgeInsets.symmetric(
