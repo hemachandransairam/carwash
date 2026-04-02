@@ -1,0 +1,1110 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:modal_bottom_sheet/modal_bottom_sheet.dart';
+import 'book_services_page.dart';
+import 'booking_history_page.dart';
+import 'profile_page.dart';
+import 'notification_page.dart'; // Import NotificationPage
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int _selectedIndex = 0;
+
+  late final List<Widget> _pages;
+
+  @override
+  void initState() {
+    super.initState();
+    _pages = [
+      const HomeContent(),
+      const BookServicesPage(),
+      const BookingHistoryPage(),
+      const ProfilePage(),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF6F6F6),
+      body: IndexedStack(index: _selectedIndex, children: _pages),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08), // Increased opacity
+              blurRadius: 25, // Increased blur
+              offset: const Offset(0, -5),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: Container(
+            height: 80,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12,
+            ), // Increased padding
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildNavItem(
+                  0,
+                  Icons.home_rounded,
+                  Icons.home_outlined,
+                  "Home",
+                ),
+                _buildNavItem(
+                  1,
+                  Icons.description,
+                  Icons.description_outlined,
+                  "Book",
+                ),
+                _buildNavItem(
+                  2,
+                  Icons.access_time_filled,
+                  Icons.access_time,
+                  "History",
+                ),
+                _buildNavItem(3, Icons.person, Icons.person_outline, "Profile"),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem(
+    int index,
+    IconData activeIcon,
+    IconData inactiveIcon,
+    String label,
+  ) {
+    final isSelected = _selectedIndex == index;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedIndex = index),
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: 65, // Increased width slightly
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOut,
+              transform: Matrix4.translationValues(0, isSelected ? -12 : 0, 0),
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color:
+                    isSelected ? const Color(0xFF01102B) : Colors.transparent,
+                shape: BoxShape.circle,
+                boxShadow:
+                    isSelected
+                        ? [
+                          BoxShadow(
+                            color: const Color(
+                              0xFF01102B,
+                            ).withOpacity(0.4), // Increased opacity
+                            blurRadius: 12, // Increased blur
+                            offset: const Offset(0, 6),
+                          ),
+                        ]
+                        : null,
+              ),
+              child: Icon(
+                isSelected ? activeIcon : inactiveIcon,
+                color:
+                    isSelected
+                        ? Colors.white
+                        : Colors.grey[600], // Darker grey for unselected
+                size: 28, // Increased size
+              ),
+            ),
+            if (isSelected) const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color:
+                    isSelected
+                        ? const Color(0xFF01102B)
+                        : Colors.grey[600], // Darker grey for unselected
+                fontSize: 12, // Increased font size
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class HomeContent extends StatefulWidget {
+  const HomeContent({super.key});
+
+  @override
+  State<HomeContent> createState() => _HomeContentState();
+}
+
+class _HomeContentState extends State<HomeContent> {
+  static const int _infinitePageCount = 10000;
+  late final PageController _pageController;
+  int _currentBannerPage = 0;
+  Timer? _carouselTimer;
+  // _isLoading is used for cancel action indication
+  bool _isLoading = false;
+  late final Stream<List<Map<String, dynamic>>> _activeOrderStream;
+
+  String _currentAddress = "Select Location";
+
+  final List<Map<String, dynamic>> _banners = [
+    {
+      'colors': [const Color(0xFFFDC830), const Color(0xFFF37335)],
+      'title': 'CARWASH SERVICE',
+      'subtitle': 'AT YOUR\nPLACE!',
+    },
+    {
+      'colors': [const Color(0xFF2193b0), const Color(0xFF6dd5ed)],
+      'title': 'QUICK SERVICE',
+      'subtitle': 'SAVE YOUR\nTIME!',
+    },
+  ];
+
+  // Static variable to track if address selection has been shown in this session
+  static bool _hasShownAddressSelection = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = Supabase.instance.client.auth.currentUser;
+    _activeOrderStream = Supabase.instance.client
+        .from('bookings')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', user?.id ?? '')
+        .order('created_at', ascending: false)
+        .limit(1);
+
+    // Start at a large index in the middle for circular scrolling simulation
+    _currentBannerPage = _infinitePageCount ~/ 2;
+    _pageController = PageController(initialPage: _currentBannerPage);
+
+    _carouselTimer = Timer.periodic(const Duration(seconds: 2), (Timer timer) {
+      if (_pageController.hasClients) {
+        _currentBannerPage++;
+        _pageController.animateToPage(
+          _currentBannerPage,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeIn,
+        );
+      }
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_hasShownAddressSelection) {
+        _showAddressSelection();
+        _hasShownAddressSelection = true;
+      }
+    });
+  }
+
+  // _fetchActiveBooking is removed as we use StreamBuilder
+
+  @override
+  void dispose() {
+    _carouselTimer?.cancel();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  // Future method to show address selection bottom sheet
+  void _showAddressSelection() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+
+    // Fetch recent addresses
+    final response = await Supabase.instance.client
+        .from('bookings')
+        .select('address_text')
+        .eq('user_id', user.id)
+        .order('created_at', ascending: false)
+        .limit(
+          5,
+        ); // Get last 5 distinct(ish) addresses - doing client side distinct
+
+    final List<String> recentAddresses = [];
+    for (var r in response) {
+      if (r['address_text'] != null &&
+          !recentAddresses.contains(r['address_text'])) {
+        recentAddresses.add(r['address_text']);
+      }
+    }
+
+    if (!mounted) return;
+
+    showBarModalBottomSheet(
+      context: context,
+      builder:
+          (context) => Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: SingleChildScrollView(
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                child: StatefulBuilder(
+                  builder: (BuildContext context, StateSetter setModalState) {
+                    final TextEditingController addressController =
+                        TextEditingController();
+
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Select Location",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        if (recentAddresses.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 20),
+                            child: Text("No recent addresses found."),
+                          ),
+                        ...recentAddresses.map(
+                          (addr) => ListTile(
+                            leading: const Icon(
+                              Icons.history,
+                              color: Colors.grey,
+                            ),
+                            title: Text(addr),
+                            onTap: () {
+                              setState(() => _currentAddress = addr);
+                              Navigator.pop(context);
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          "Add New Address",
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: addressController,
+                                decoration: InputDecoration(
+                                  hintText: "Enter address",
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: Colors.grey[300]!,
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: Colors.grey[300]!,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFF01102B),
+                                    ),
+                                  ),
+                                ),
+                                onSubmitted: (value) {
+                                  if (value.trim().isNotEmpty) {
+                                    setState(
+                                      () => _currentAddress = value.trim(),
+                                    );
+                                    Navigator.pop(context);
+                                  }
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            IconButton(
+                              onPressed: () {
+                                if (addressController.text.trim().isNotEmpty) {
+                                  setState(
+                                    () =>
+                                        _currentAddress =
+                                            addressController.text.trim(),
+                                  );
+                                  Navigator.pop(context);
+                                }
+                              },
+                              icon: const Icon(
+                                Icons.arrow_forward_ios,
+                                size: 16,
+                              ),
+                              style: IconButton.styleFrom(
+                                backgroundColor: const Color(0xFF01102B),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.all(12),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        const Divider(),
+                        ListTile(
+                          leading: const Icon(
+                            Icons.my_location,
+                            color: Color(0xFF01102B),
+                          ),
+                          title: const Text(
+                            "Use Current Location",
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          onTap: () {
+                            setState(
+                              () => _currentAddress = "Current Location",
+                            );
+                            Navigator.pop(context);
+                          },
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Size size = MediaQuery.of(context).size;
+    final double horizontalPadding = size.width * 0.06;
+    final bool isShortScreen = size.height < 700;
+    final double headerHeight = size.height * (isShortScreen ? 0.25 : 0.28);
+
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Section
+          Stack(
+            children: [
+              Container(
+                width: double.infinity,
+                height: headerHeight,
+                decoration: const BoxDecoration(
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(40),
+                    bottomRight: Radius.circular(40),
+                  ),
+                  image: DecorationImage(
+                    image: AssetImage('assets/home_title.png'),
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: size.height * 0.065,
+                left: horizontalPadding,
+                right: horizontalPadding,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Welcome,',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                            FutureBuilder<Map<String, dynamic>>(
+                              future:
+                                  Supabase.instance.client
+                                      .from('profiles')
+                                      .select(
+                                        'full_name',
+                                      ) // Assuming 'full_name' is the column name
+                                      .eq(
+                                        'id',
+                                        Supabase
+                                                .instance
+                                                .client
+                                                .auth
+                                                .currentUser
+                                                ?.id ??
+                                            '',
+                                      )
+                                      .single(),
+                              builder: (context, snapshot) {
+                                if (snapshot.hasData) {
+                                  final name =
+                                      snapshot.data!['full_name'] as String? ??
+                                      'User';
+                                  return Text(
+                                    name,
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: size.width * 0.08,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  );
+                                }
+                                return Text(
+                                  'User',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: size.width * 0.08,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                        GestureDetector(
+                          onTap: () {
+                            // Navigate to Notification Page
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const NotificationPage(),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.notifications_none,
+                              color: Color(0xFF01102B),
+                              size: 24,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: size.height * 0.035),
+                    const Text(
+                      'Location',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    GestureDetector(
+                      onTap: _showAddressSelection,
+                      child: Container(
+                        constraints: BoxConstraints(
+                          maxWidth:
+                              size.width * 0.5, // Limit to half screen width
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.location_on,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                _currentAddress.length > 25
+                                    ? '${_currentAddress.substring(0, 25)}...'
+                                    : _currentAddress,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(
+                              Icons.keyboard_arrow_down,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // Banner Carousel Section
+          SizedBox(
+            height: 160,
+            child: PageView.builder(
+              controller: _pageController,
+              onPageChanged: (int page) {
+                setState(() {
+                  _currentBannerPage = page;
+                });
+              },
+              itemBuilder: (context, index) {
+                final banner = _banners[index % _banners.length];
+                return _buildBanner(
+                  horizontalPadding,
+                  size,
+                  banner['colors'],
+                  banner['title'],
+                  banner['subtitle'],
+                );
+              },
+            ),
+          ),
+
+          const SizedBox(height: 16),
+          // Page Indicator
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(_banners.length, (index) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: _buildIndicator(index),
+              );
+            }),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Book Service Button
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+            child: SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: () {
+                  // Navigate to Booking Tab (Index 1)
+                  final homeState =
+                      context.findAncestorStateOfType<_HomeScreenState>();
+                  if (homeState != null) {
+                    homeState.setState(() => homeState._selectedIndex = 1);
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF01102B),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  elevation: 4,
+                  shadowColor: const Color(0xFF01102B).withOpacity(0.4),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.calendar_month, color: Colors.white),
+                    SizedBox(width: 12),
+                    Text(
+                      "Book a Service",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Active Orders Section
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _activeOrderStream,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const SizedBox.shrink();
+              }
+              if (snapshot.hasError) {
+                return const SizedBox.shrink();
+              }
+
+              final bookings = snapshot.data ?? [];
+              Map<String, dynamic>? activeBooking;
+
+              if (bookings.isNotEmpty) {
+                final booking = bookings.first;
+                final status =
+                    (booking['status'] as String? ?? '').toLowerCase();
+                if (status == 'pending' || status == 'confirmed') {
+                  activeBooking = booking;
+                }
+              }
+
+              if (activeBooking == null) {
+                return const SizedBox.shrink();
+              }
+
+              return Padding(
+                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Active Orders',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF01102B),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 15,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    "${activeBooking['vehicle_name']}", // Removed Brand repetition
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF01102B),
+                                    ),
+                                  ),
+                                  Text(
+                                    activeBooking['vehicle_type'] ?? '',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey[600],
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color:
+                                      (activeBooking['status'] == 'pending')
+                                          ? const Color(0xFFFFF4E5)
+                                          : const Color(0xFFE8F5E9),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  (activeBooking['status'] as String)
+                                      .toUpperCase(),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color:
+                                        (activeBooking['status'] == 'pending')
+                                            ? const Color(0xFFFF9800)
+                                            : const Color(0xFF4CAF50),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                            child: Divider(height: 1),
+                          ),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.calendar_today_outlined,
+                                size: 16,
+                                color: Colors.grey,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                "${activeBooking['booking_date']} • ${activeBooking['booking_time']}",
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                  color: Color(0xFF01102B),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(
+                                Icons.location_on_outlined,
+                                size: 16,
+                                color: Colors.grey,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  activeBooking['address_text'] ?? '',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 13,
+                                    color: Colors.grey[700],
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                "Total Price",
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              Text(
+                                "Rs. ${activeBooking['total_price']}",
+                                style: const TextStyle(
+                                  color: Color(0xFF01102B),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 44,
+                            child:
+                                _isLoading
+                                    ? const Center(
+                                      child: CircularProgressIndicator(),
+                                    )
+                                    : ElevatedButton(
+                                      onPressed:
+                                          () => _showCancelDialog(
+                                            activeBooking!['id'],
+                                          ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(
+                                          0xFF01102B,
+                                        ),
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        "Cancel Order",
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+
+          const SizedBox(height: 28),
+
+          // Recent History Section
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+            child: const Text(
+              'Recent History',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF01102B),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(30),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.04),
+                    blurRadius: 15,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.history_outlined,
+                    size: 48,
+                    color: Colors.grey[300],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No Recent History',
+                    style: TextStyle(
+                      color: Colors.grey[500],
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Booking history will appear when the backend is initialized.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.grey[400],
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 100),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showCancelDialog(String bookingId) async {
+    return showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text("Cancel Order?"),
+            content: const Text(
+              "Are you sure you want to cancel this order? This action cannot be undone.",
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  "No, Keep it",
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(context); // Close dialog
+                  // Show loading
+                  setState(() => _isLoading = true);
+                  try {
+                    await Supabase.instance.client
+                        .from('bookings')
+                        .update({'status': 'Cancelled'})
+                        .eq('id', bookingId);
+
+                    if (mounted) {
+                      setState(() => _isLoading = false);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Order cancelled successfully"),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                      // StreamBuilder will auto-update
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      setState(() => _isLoading = false);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text("Error cancelling order: $e"),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                },
+                child: const Text(
+                  "Yes, Cancel",
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Widget _buildBanner(
+    double padding,
+    Size size,
+    List<Color> colors,
+    String tag,
+    String title,
+  ) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: padding),
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: colors,
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              left: 20,
+              top: 0,
+              bottom: 0,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    tag,
+                    style: const TextStyle(
+                      color: Color(0xFF01102B),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Color(0xFF01102B),
+                      fontWeight: FontWeight.w900,
+                      fontSize: 26,
+                      height: 1.1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              right: -15,
+              bottom: 0,
+              top: 0,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: size.width * 0.55),
+                child: Image.asset('assets/home_car.png', fit: BoxFit.contain),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIndicator(int index) {
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(
+        color:
+            (_currentBannerPage % _banners.length) == index
+                ? const Color(0xFF01102B)
+                : Colors.grey[300],
+        shape: BoxShape.circle,
+      ),
+    );
+  }
+}
+
+class PlaceholderPage extends StatelessWidget {
+  final String title;
+  const PlaceholderPage({super.key, required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.bold,
+          color: Color(0xFF01102B),
+        ),
+      ),
+    );
+  }
+}
