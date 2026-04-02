@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/services/mock_database.dart';
 import '../widgets/custom_widgets.dart';
 
 class EditProfilePage extends StatefulWidget {
@@ -22,15 +22,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
 
   Future<void> _fetchProfile() async {
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = MockDatabase.instance.auth.currentUser;
     if (user != null) {
       try {
         final data =
-            await Supabase.instance.client
+            await MockDatabase.instance
                 .from('profiles')
                 .select()
-                .eq('id', user.id)
-                .single();
+                .eq('id', user['id'])
+                .single()
+                .build<Map<String, dynamic>>();
         if (mounted) {
           setState(() {
             _nameController.text = data['full_name'] ?? '';
@@ -46,7 +47,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
 
   Future<void> _updateProfile() async {
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = MockDatabase.instance.auth.currentUser;
     if (user == null) return;
 
     if (_nameController.text.isEmpty) {
@@ -59,13 +60,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
     setState(() => _isLoading = true);
 
     try {
-      await Supabase.instance.client.from('profiles').upsert({
-        'id': user.id,
+      await MockDatabase.instance.from('profiles').upsert({
+        'id': user['id'],
         'full_name': _nameController.text,
         'email': _emailController.text,
         'phone': _phoneController.text,
         'updated_at': DateTime.now().toIso8601String(),
-      });
+      }).build<void>();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

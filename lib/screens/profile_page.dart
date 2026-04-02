@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/services/mock_database.dart';
 import '../widgets/custom_widgets.dart';
 import 'booking_history_page.dart';
 import '../auth/login.dart';
@@ -29,25 +29,26 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _fetchUserData() async {
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = MockDatabase.instance.auth.currentUser;
     if (user != null) {
       try {
         final data =
-            await Supabase.instance.client
+            await MockDatabase.instance
                 .from('profiles')
                 .select()
-                .eq('id', user.id)
-                .single();
+                .eq('id', user['id'])
+                .single()
+                .build<Map<String, dynamic>>();
         if (mounted) {
           setState(() {
-            _userData = data;
+            _userData = data as Map<String, dynamic>?;
             _isLoading = false;
           });
         }
       } catch (e) {
         if (mounted) {
           setState(() {
-            _userData = {'full_name': 'New User', 'email': user.email};
+            _userData = {'full_name': 'New User', 'email': user['email'] ?? ''};
             _isLoading = false;
           });
         }
@@ -56,7 +57,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _logout() async {
-    await Supabase.instance.client.auth.signOut();
+    await MockDatabase.instance.auth.signOut();
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const LoginPage()),
@@ -75,8 +76,8 @@ class _ProfilePageState extends State<ProfilePage> {
       appBar: buildGlobalAppBar(
         context: context,
         title: "Profile",
-        titleColor: Colors.white, // Make title white
-        showBackButton: false,
+        titleColor: const Color.fromARGB(255, 0, 0, 0), // Make title white
+        showBackButton: Navigator.canPop(context),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
@@ -113,7 +114,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   // Background image extending to full screen including notch area
                   Positioned.fill(
                     child: Image.asset(
-                      'assets/profile_background.png',
+                      'assets/loginbg.png',
+                      opacity: const AlwaysStoppedAnimation(0.1),
                       fit: BoxFit.cover,
                       alignment: Alignment.topCenter,
                     ),

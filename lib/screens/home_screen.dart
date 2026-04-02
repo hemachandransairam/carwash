@@ -1,11 +1,11 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:modal_bottom_sheet/modal_bottom_sheet.dart';
+import 'dart:async';
+import '../core/services/mock_database.dart';
 import 'book_services_page.dart';
 import 'booking_history_page.dart';
 import 'profile_page.dart';
-import 'notification_page.dart'; // Import NotificationPage
+import 'notification_page.dart';
+import 'package:modal_bottom_sheet/modal_bottom_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -187,13 +187,13 @@ class _HomeContentState extends State<HomeContent> {
   @override
   void initState() {
     super.initState();
-    final user = Supabase.instance.client.auth.currentUser;
-    _activeOrderStream = Supabase.instance.client
+    final user = MockDatabase.instance.auth.currentUser;
+    _activeOrderStream = MockDatabase.instance
         .from('bookings')
         .stream(primaryKey: ['id'])
-        .eq('user_id', user?.id ?? '')
+        .eq('user_id', user?['id'] ?? '')
         .order('created_at', ascending: false)
-        .limit(1);
+        .limit(1) as Stream<List<Map<String, dynamic>>>;
 
     // Start at a large index in the middle for circular scrolling simulation
     _currentBannerPage = _infinitePageCount ~/ 2;
@@ -229,18 +229,18 @@ class _HomeContentState extends State<HomeContent> {
 
   // Future method to show address selection bottom sheet
   void _showAddressSelection() async {
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = MockDatabase.instance.auth.currentUser;
     if (user == null) return;
 
     // Fetch recent addresses
-    final response = await Supabase.instance.client
+    final response = await MockDatabase.instance
         .from('bookings')
         .select('address_text')
-        .eq('user_id', user.id)
+        .eq('user_id', user['id'])
         .order('created_at', ascending: false)
         .limit(
           5,
-        ); // Get last 5 distinct(ish) addresses - doing client side distinct
+        ).build<List<Map<String, dynamic>>>(); // Get last 5 distinct(ish) addresses - doing client side distinct
 
     final List<String> recentAddresses = [];
     for (var r in response) {
@@ -450,22 +450,22 @@ class _HomeContentState extends State<HomeContent> {
                             ),
                             FutureBuilder<Map<String, dynamic>>(
                               future:
-                                  Supabase.instance.client
+                                  MockDatabase.instance
                                       .from('profiles')
                                       .select(
                                         'full_name',
                                       ) // Assuming 'full_name' is the column name
                                       .eq(
                                         'id',
-                                        Supabase
+                                        MockDatabase
                                                 .instance
-                                                .client
                                                 .auth
                                                 .currentUser
-                                                ?.id ??
+                                                ?['id'] ??
                                             '',
                                       )
-                                      .single(),
+                                      .single()
+                                      .build<Map<String, dynamic>>(),
                               builder: (context, snapshot) {
                                 if (snapshot.hasData) {
                                   final name =
@@ -968,10 +968,11 @@ class _HomeContentState extends State<HomeContent> {
                   // Show loading
                   setState(() => _isLoading = true);
                   try {
-                    await Supabase.instance.client
+                    await MockDatabase.instance.client
                         .from('bookings')
                         .update({'status': 'Cancelled'})
-                        .eq('id', bookingId);
+                        .eq('id', bookingId)
+                        .build<void>();
 
                     if (mounted) {
                       setState(() => _isLoading = false);

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/services/mock_database.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:ccwink/screens/booking_summary_page.dart';
@@ -70,13 +70,14 @@ class _BookServicesPageState extends State<BookServicesPage> {
   }
 
   Future<void> _fetchVehicles() async {
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = MockDatabase.instance.auth.currentUser;
     if (user != null) {
       try {
-        final data = await Supabase.instance.client
+        final data = await MockDatabase.instance
             .from('vehicles')
             .select()
-            .eq('user_id', user.id);
+            .eq('user_id', user['id'])
+            .build();
         setState(() {
           _savedVehicles = List<Map<String, dynamic>>.from(data);
           _isLoadingVehicles = false;
@@ -90,13 +91,14 @@ class _BookServicesPageState extends State<BookServicesPage> {
   }
 
   Future<void> _fetchAddresses() async {
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = MockDatabase.instance.auth.currentUser;
     if (user != null) {
       try {
-        final data = await Supabase.instance.client
+        final data = await MockDatabase.instance
             .from('addresses')
             .select()
-            .eq('user_id', user.id);
+            .eq('user_id', user['id'])
+            .build();
         setState(() {
           _savedAddresses = List<Map<String, dynamic>>.from(data);
           _isLoadingAddresses = false;
@@ -180,7 +182,7 @@ class _BookServicesPageState extends State<BookServicesPage> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading:
-            _currentStep > 0
+            (_currentStep > 0 || Navigator.canPop(context))
                 ? IconButton(
                   icon: const Icon(Icons.arrow_back, color: Color(0xFF01102B)),
                   onPressed: _previousStep,
@@ -1100,15 +1102,16 @@ class _BookServicesPageState extends State<BookServicesPage> {
                           ),
                     );
                     if (label != null) {
-                      final user = Supabase.instance.client.auth.currentUser;
+                      final user = MockDatabase.instance.auth.currentUser;
                       if (user != null) {
-                        await Supabase.instance.client
+                        await MockDatabase.instance.client
                             .from('addresses')
                             .insert({
-                              'user_id': user.id,
+                              'user_id': user['id'],
                               'label': label,
                               'address': _addressController.text,
-                            });
+                            })
+                            .build<void>();
                         await _fetchAddresses();
                         setState(() {
                           _addressLabel = label;

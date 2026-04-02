@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/services/mock_database.dart';
 import 'complete_profile.dart';
 import '../screens/home_screen.dart';
 
@@ -36,24 +36,23 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
 
     setState(() => _isLoading = true);
     try {
-      final response = await Supabase.instance.client.auth.verifyOTP(
+      final responseUser = await MockDatabase.instance.auth.verifyOtp(
         phone: widget.phoneNumber,
         token: otp,
-        type: OtpType.sms,
+        type: null,
       );
 
-      if (response.user != null) {
+      final user = MockDatabase.instance.auth.currentUser;
+      if (user != null) {
         // Successful login, now check if they are a new user
-        // We check for metadata or query profiles table (assuming profiles table)
-        // If they have meta data like "full_name", they are old.
-        // For phone auth, metadata is often empty initially.
         
         // Let's check for a profile in 'profiles' table
-        final profile = await Supabase.instance.client
+        final Map<String, dynamic>? profile = await MockDatabase.instance
             .from('profiles')
             .select()
-            .eq('id', response.user!.id)
-            .maybeSingle();
+            .eq('id', user['id'])
+            .maybeSingle()
+            .build();
 
         if (mounted) {
           if (profile == null) {
@@ -134,7 +133,7 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
               ),
               TextButton(
                 onPressed: _isLoading ? null : () async {
-                  await Supabase.instance.client.auth.signInWithOtp(phone: widget.phoneNumber);
+                  await MockDatabase.instance.auth.signInWithOtp(phone: widget.phoneNumber);
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("OTP Resent")));
                   }

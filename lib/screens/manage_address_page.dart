@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/services/mock_database.dart';
 import '../widgets/custom_widgets.dart';
 
 class ManageAddressPage extends StatefulWidget {
@@ -22,13 +22,14 @@ class _ManageAddressPageState extends State<ManageAddressPage> {
   }
 
   Future<void> _fetchAddresses() async {
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = MockDatabase.instance.auth.currentUser;
     if (user != null) {
       try {
-        final data = await Supabase.instance.client
+        final data = await MockDatabase.instance
             .from('user_addresses')
             .select()
-            .eq('user_id', user.id);
+            .eq('user_id', user['id'])
+            .build<List<Map<String, dynamic>>>();
         setState(() {
           _addresses = List<Map<String, dynamic>>.from(data);
           _isLoading = false;
@@ -41,20 +42,20 @@ class _ManageAddressPageState extends State<ManageAddressPage> {
 
   Future<void> _addAddress() async {
     if (_addressController.text.isEmpty) return;
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = MockDatabase.instance.auth.currentUser;
     if (user != null) {
-      await Supabase.instance.client.from('user_addresses').insert({
-        'user_id': user.id,
+      await MockDatabase.instance.from('user_addresses').insert({
+        'user_id': user['id'],
         'label': _selectedLabel,
         'address': _addressController.text,
-      });
+      }).build<void>();
       _addressController.clear();
       _fetchAddresses();
     }
   }
 
   Future<void> _deleteAddress(int id) async {
-    await Supabase.instance.client.from('user_addresses').delete().eq('id', id);
+    await MockDatabase.instance.from('user_addresses').delete().eq('id', id).build<void>();
     _fetchAddresses();
   }
 

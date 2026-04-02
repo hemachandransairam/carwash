@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/services/mock_database.dart';
 import '../widgets/custom_widgets.dart';
 
 class MyVehiclesPage extends StatefulWidget {
@@ -20,13 +20,14 @@ class _MyVehiclesPageState extends State<MyVehiclesPage> {
   }
 
   Future<void> _fetchVehicles() async {
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = MockDatabase.instance.auth.currentUser;
     if (user != null) {
       try {
-        final data = await Supabase.instance.client
+        final data = await MockDatabase.instance
             .from('vehicles')
             .select()
-            .eq('user_id', user.id);
+            .eq('user_id', user['id'])
+            .build<List<Map<String, dynamic>>>();
         setState(() {
           _vehicles = List<Map<String, dynamic>>.from(data);
           _isLoading = false;
@@ -38,7 +39,7 @@ class _MyVehiclesPageState extends State<MyVehiclesPage> {
   }
 
   Future<void> _deleteVehicle(int id) async {
-    await Supabase.instance.client.from('vehicles').delete().eq('id', id);
+    await MockDatabase.instance.from('vehicles').delete().eq('id', id).build<void>();
     _fetchVehicles();
   }
 
@@ -181,16 +182,17 @@ class _MyVehiclesPageState extends State<MyVehiclesPage> {
                               ? null
                               : () async {
                                 final user =
-                                    Supabase.instance.client.auth.currentUser;
+                                    MockDatabase.instance.auth.currentUser;
                                 if (user != null) {
-                                  await Supabase.instance.client
+                                  await MockDatabase.instance
                                       .from('vehicles')
                                       .insert({
-                                        'user_id': user.id,
+                                        'user_id': user['id'],
                                         'name': '$brand $selectedType',
                                         'brand': brand,
                                         'type': selectedType,
-                                      });
+                                      })
+                                      .build<void>();
                                   _fetchVehicles();
                                   if (mounted) Navigator.pop(context);
                                 }

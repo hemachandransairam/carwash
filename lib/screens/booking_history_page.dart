@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/services/mock_database.dart';
 import 'package:intl/intl.dart';
 import '../widgets/custom_widgets.dart';
 
@@ -13,7 +13,7 @@ class BookingHistoryPage extends StatefulWidget {
 class _BookingHistoryPageState extends State<BookingHistoryPage> {
   @override
   Widget build(BuildContext context) {
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = MockDatabase.instance.auth.currentUser;
 
     return DefaultTabController(
       length: 3,
@@ -22,7 +22,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
         appBar: buildGlobalAppBar(
           context: context,
           title: "Booking History",
-          showBackButton: false,
+          showBackButton: Navigator.canPop(context),
           bottom: const TabBar(
             labelColor: Color(0xFF01102B),
             unselectedLabelColor: Colors.grey,
@@ -39,10 +39,10 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
             user == null
                 ? const Center(child: Text("Please login to view history"))
                 : StreamBuilder<List<Map<String, dynamic>>>(
-                  stream: Supabase.instance.client
+                  stream: MockDatabase.instance
                       .from('bookings')
                       .stream(primaryKey: ['id'])
-                      .eq('user_id', user.id)
+                      .eq('user_id', user['id'])
                       .order('created_at', ascending: false),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
@@ -398,10 +398,11 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
 
   Future<void> _completePayment(BuildContext context, dynamic bookingId) async {
     try {
-      await Supabase.instance.client
+      await MockDatabase.instance
           .from('bookings')
           .update({'status': 'completed'}) // Mark as fully completed
-          .eq('id', bookingId);
+          .eq('id', bookingId)
+          .build<void>();
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -422,10 +423,11 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
 
   Future<void> _cancelBooking(BuildContext context, dynamic bookingId) async {
     try {
-      await Supabase.instance.client
+      await MockDatabase.instance
           .from('bookings')
           .update({'status': 'cancelled'})
-          .eq('id', bookingId);
+          .eq('id', bookingId)
+          .build();
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

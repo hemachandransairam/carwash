@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/services/mock_database.dart';
 
 class SelectVehicleScreen extends StatefulWidget {
   const SelectVehicleScreen({super.key});
@@ -341,18 +341,17 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
 
                                       // Get current user
                                       final user =
-                                          Supabase
+                                          MockDatabase
                                               .instance
-                                              .client
                                               .auth
                                               .currentUser;
 
                                       if (user != null) {
-                                        // Save vehicle to Supabase
-                                        await Supabase.instance.client
+                                        // Save vehicle to MockDatabase
+                                        await MockDatabase.instance.client
                                             .from('vehicles')
                                             .insert({
-                                              'user_id': user.id,
+                                              'user_id': user['id'],
                                               'name':
                                                   '$selectedBrand $selectedModel'
                                                           .trim()
@@ -365,7 +364,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                                                   selectedModel, // Save new field
                                               'license_number':
                                                   licenseNumber, // Save new field
-                                            });
+                                            })
+                                            .build<void>();
                                       }
 
                                       // Close loading dialog

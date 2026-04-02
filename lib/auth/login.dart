@@ -1,6 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/services/mock_database.dart';
 import 'verify_code.dart';
 
 class LoginPage extends StatefulWidget {
@@ -34,7 +34,7 @@ class _LoginPageState extends State<LoginPage> {
 
     setState(() => _isLoading = true);
     try {
-      await Supabase.instance.client.auth.signInWithOtp(
+      await MockDatabase.instance.auth.signInWithOtp(
         phone: fullPhone,
       );
 

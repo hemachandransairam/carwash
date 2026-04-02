@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/services/mock_database.dart';
 import '../screens/location_permission_screen.dart';
 
 class CompleteProfilePage extends StatefulWidget {
@@ -19,10 +19,10 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
   @override
   void initState() {
     super.initState();
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user != null && user.phone != null) {
+    final user = MockDatabase.instance.auth.currentUser;
+    if (user != null && user['phone'] != null) {
       // Pre-fill phone if available (though they might want to confirm it)
-      String fullPhone = user.phone!;
+      String fullPhone = user['phone']!;
       if (fullPhone.startsWith('+')) {
         // Try to separate country code
         if (fullPhone.length > 10) {
@@ -55,16 +55,16 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
 
     setState(() => _isLoading = true);
     try {
-      final user = Supabase.instance.client.auth.currentUser;
+      final user = MockDatabase.instance.auth.currentUser;
       if (user == null) return;
 
-      await Supabase.instance.client.from('profiles').upsert({
-        'id': user.id,
+      await MockDatabase.instance.from('profiles').insert({
+        'id': user['id'],
         'full_name': name,
         'phone': '$_selectedCountryCode${_phoneController.text.trim()}',
         'gender': _selectedGender,
         'updated_at': DateTime.now().toIso8601String(),
-      });
+      }).build<void>();
 
       if (mounted) {
         Navigator.pushReplacement(

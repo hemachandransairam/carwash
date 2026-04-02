@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/services/mock_database.dart';
 import '../widgets/custom_widgets.dart';
 
 class FeedbackPage extends StatefulWidget {
@@ -188,15 +189,15 @@ class _FeedbackPageState extends State<FeedbackPage> {
     });
 
     try {
-      // final user = Supabase.instance.client.auth.currentUser;
+      final user = MockDatabase.instance.auth.currentUser;
 
-      // You can save feedback to Supabase here
-      // await Supabase.instance.client.from('feedback').insert({
-      //   'user_id': user?.id,
-      //   'rating': _rating,
-      //   'feedback': _feedbackController.text.trim(),
-      //   'created_at': DateTime.now().toIso8601String(),
-      // });
+      // Save feedback to MockDatabase
+      await MockDatabase.instance.from('feedback').insert({
+        'user_id': user?['id'],
+        'rating': _rating,
+        'feedback': _feedbackController.text.trim(),
+        'created_at': DateTime.now().toIso8601String(),
+      }).build<void>();
 
       if (mounted) {
         setState(() {

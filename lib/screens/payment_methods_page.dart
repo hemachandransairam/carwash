@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/services/mock_database.dart';
 import '../widgets/custom_widgets.dart';
 import 'e_ticket_page.dart';
 
@@ -33,7 +33,7 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
 
   void _confirmPayment() async {
     setState(() => _isSaving = true);
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = MockDatabase.instance.auth.currentUser;
     if (user == null) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -45,8 +45,8 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
     }
 
     try {
-      await Supabase.instance.client.from('bookings').insert({
-        'user_id': user.id,
+      await MockDatabase.instance.from('bookings').insert({
+        'user_id': user['id'],
         'service_names': widget.selectedServices,
         'total_price': widget.totalPrice,
         'booking_date': widget.selectedDate.toIso8601String().split('T')[0],
@@ -58,7 +58,7 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
         'address_text': widget.addressText,
         'status': 'pending',
         'payment_method': _selectedMethod,
-      });
+      }).build<void>();
 
       if (mounted) {
         setState(() => _isSaving = false);
