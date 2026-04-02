@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../screens/location_permission_screen.dart';
 
 class CompleteProfilePage extends StatefulWidget {
@@ -9,8 +10,80 @@ class CompleteProfilePage extends StatefulWidget {
 }
 
 class _CompleteProfilePageState extends State<CompleteProfilePage> {
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
   String? _selectedGender;
-  String _selectedCountryCode = "+1"; // Default country code
+  String _selectedCountryCode = "+91"; // Default country code
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null && user.phone != null) {
+      // Pre-fill phone if available (though they might want to confirm it)
+      String fullPhone = user.phone!;
+      if (fullPhone.startsWith('+')) {
+        // Try to separate country code
+        if (fullPhone.length > 10) {
+           _selectedCountryCode = fullPhone.substring(0, fullPhone.length - 10);
+           _phoneController.text = fullPhone.substring(fullPhone.length - 10);
+        } else {
+           _phoneController.text = fullPhone;
+        }
+      } else {
+        _phoneController.text = fullPhone;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleCompleteProfile() async {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enter your name")),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+
+      await Supabase.instance.client.from('profiles').upsert({
+        'id': user.id,
+        'full_name': name,
+        'phone': '$_selectedCountryCode${_phoneController.text.trim()}',
+        'gender': _selectedGender,
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const LocationPermissionScreen(),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Failed to save profile: $e")),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,123 +99,89 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
           icon: const Icon(Icons.arrow_back, color: Color(0xFF000814)),
           onPressed: () => Navigator.pop(context),
         ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const LocationPermissionScreen(),
-                ),
-              );
-            },
-            child: const Text(
-              "Skip",
-              style: TextStyle(
-                color: Color(0xFF1D3557),
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight:
-                  size.height -
-                  AppBar().preferredSize.height -
-                  MediaQuery.of(context).padding.top -
-                  MediaQuery.of(context).padding.bottom,
-            ),
-            child: IntrinsicHeight(
-              child: Column(
+          child: Column(
+            children: [
+              const Text(
+                "Complete Your Profile",
+                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                "Don't worry, only you can see your personal\ndata. No one else can view it.",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey, height: 1.4),
+              ),
+              SizedBox(height: isSmallScreen ? 20 : 30),
+
+              // Profile Image Picker
+              Stack(
                 children: [
-                  const Text(
-                    "Complete Your Profile",
-                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+                  CircleAvatar(
+                    radius: isSmallScreen ? 50 : 60,
+                    backgroundColor: const Color(0xFFF0F0F0),
+                    child: Icon(
+                      Icons.person,
+                      size: isSmallScreen ? 60 : 80,
+                      color: const Color(0xFF000814),
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    "Don't worry, only you can see your personal\ndata. No one else can view it.",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey, height: 1.4),
+                  Positioned(
+                    bottom: 0,
+                    right: 4,
+                    child: Container(
+                      height: 32,
+                      width: 32,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF000814),
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        icon: const Icon(
+                          Icons.edit_outlined,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                        onPressed: () {}, // Logic to pick image
+                      ),
+                    ),
                   ),
-                  SizedBox(height: isSmallScreen ? 20 : 30),
+                ],
+              ),
+              SizedBox(height: isSmallScreen ? 20 : 40),
 
-                  // Profile Image Picker
-                  Stack(
-                    children: [
-                      CircleAvatar(
-                        radius: isSmallScreen ? 50 : 60,
-                        backgroundColor: const Color(0xFFF0F0F0),
-                        child: Icon(
-                          Icons.person,
-                          size: isSmallScreen ? 60 : 80,
-                          color: const Color(0xFF000814),
-                        ),
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        right: 4,
-                        child: Container(
-                          height: 32,
-                          width: 32,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF000814),
-                            shape: BoxShape.circle,
-                          ),
-                          child: IconButton(
-                            padding: EdgeInsets.zero,
-                            icon: const Icon(
-                              Icons.edit_outlined,
-                              size: 18,
-                              color: Colors.white,
-                            ),
-                            onPressed: () {}, // Logic to pick image
-                          ),
-                        ),
-                      ),
-                    ],
+              _buildLabel("Name"),
+              _buildTextField(_nameController, "Ex. John Doe"),
+              SizedBox(height: isSmallScreen ? 12 : 20),
+
+              _buildLabel("Phone Number"),
+              _buildPhoneField(),
+              SizedBox(height: isSmallScreen ? 12 : 20),
+
+              _buildLabel("Gender"),
+              _buildGenderDropdown(),
+
+              const SizedBox(height: 40),
+              SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _handleCompleteProfile,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF000814),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    elevation: 0,
                   ),
-                  SizedBox(height: isSmallScreen ? 20 : 40),
-
-                  _buildLabel("Name"),
-                  _buildTextField("Ex. John Doe"),
-                  SizedBox(height: isSmallScreen ? 12 : 20),
-
-                  _buildLabel("Phone Number"),
-                  _buildPhoneField(),
-                  SizedBox(height: isSmallScreen ? 12 : 20),
-
-                  _buildLabel("Gender"),
-                  _buildGenderDropdown(),
-
-                  const Spacer(),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder:
-                                (context) => const LocationPermissionScreen(),
-                          ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF000814),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: const Text(
+                  child: _isLoading 
+                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2,))
+                    : const Text(
                         "Complete Profile",
                         style: TextStyle(
                           color: Colors.white,
@@ -150,19 +189,16 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                ],
+                ),
               ),
-            ),
+              const SizedBox(height: 20),
+            ],
           ),
         ),
       ),
     );
   }
 
-  // Helper for Section Labels
   Widget _buildLabel(String text) {
     return Align(
       alignment: Alignment.centerLeft,
@@ -176,9 +212,9 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
     );
   }
 
-  // Standard Text Field Helper
-  Widget _buildTextField(String hint) {
+  Widget _buildTextField(TextEditingController controller, String hint) {
     return TextField(
+      controller: controller,
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: TextStyle(color: Colors.grey.withOpacity(0.5), fontSize: 14),
@@ -200,7 +236,6 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
     );
   }
 
-  // Phone Field with Country Code Dropdown
   Widget _buildPhoneField() {
     return Row(
       children: [
@@ -217,7 +252,7 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
               value: _selectedCountryCode,
               icon: const Icon(Icons.keyboard_arrow_down, size: 20),
               items:
-                  ["+1", "+91", "+44", "+971"].map((String value) {
+                  ["+91", "+1", "+44", "+971"].map((String value) {
                     return DropdownMenuItem<String>(
                       value: value,
                       child: Text(value, style: const TextStyle(fontSize: 15)),
@@ -232,6 +267,7 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
         const SizedBox(width: 12),
         Expanded(
           child: TextField(
+            controller: _phoneController,
             keyboardType: TextInputType.phone,
             decoration: InputDecoration(
               hintText: "Enter Phone Number",
@@ -260,7 +296,6 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
     );
   }
 
-  // Gender Dropdown Helper
   Widget _buildGenderDropdown() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16),

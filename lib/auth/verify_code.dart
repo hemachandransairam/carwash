@@ -1,9 +1,88 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'complete_profile.dart';
+import '../screens/home_screen.dart';
 
-class VerifyCodePage extends StatelessWidget {
-  const VerifyCodePage({super.key});
+class VerifyCodePage extends StatefulWidget {
+  final String phoneNumber;
+  const VerifyCodePage({super.key, required this.phoneNumber});
+
+  @override
+  State<VerifyCodePage> createState() => _VerifyCodePageState();
+}
+
+class _VerifyCodePageState extends State<VerifyCodePage> {
+  final List<TextEditingController> _otpControllers =
+      List.generate(6, (index) => TextEditingController());
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    for (var controller in _otpControllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _verifyOtp() async {
+    final otp = _otpControllers.map((c) => c.text).join();
+    if (otp.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enter complete OTP")),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final response = await Supabase.instance.client.auth.verifyOTP(
+        phone: widget.phoneNumber,
+        token: otp,
+        type: OtpType.sms,
+      );
+
+      if (response.user != null) {
+        // Successful login, now check if they are a new user
+        // We check for metadata or query profiles table (assuming profiles table)
+        // If they have meta data like "full_name", they are old.
+        // For phone auth, metadata is often empty initially.
+        
+        // Let's check for a profile in 'profiles' table
+        final profile = await Supabase.instance.client
+            .from('profiles')
+            .select()
+            .eq('id', response.user!.id)
+            .maybeSingle();
+
+        if (mounted) {
+          if (profile == null) {
+            // New user, go to complete profile
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => const CompleteProfilePage()),
+              (route) => false,
+            );
+          } else {
+            // Old user, go home
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => const HomeScreen()),
+              (route) => false,
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Invalid OTP: $e")));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,81 +103,68 @@ class VerifyCodePage extends StatelessWidget {
         child: SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight:
-                  size.height -
-                  AppBar().preferredSize.height -
-                  MediaQuery.of(context).padding.top -
-                  MediaQuery.of(context).padding.bottom,
-            ),
-            child: IntrinsicHeight(
-              child: Column(
-                children: [
-                  SizedBox(height: isSmallScreen ? 10 : 20),
-                  const Text(
-                    "Verify Code",
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    "Please enter the code we just sent to\nyour email",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey, height: 1.5),
-                  ),
-                  SizedBox(height: isSmallScreen ? 30 : 60),
+          child: Column(
+            children: [
+              SizedBox(height: isSmallScreen ? 10 : 20),
+              const Text(
+                "Verify Code",
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                "Please enter the code we just sent to\n${widget.phoneNumber}",
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.grey, height: 1.5),
+              ),
+              SizedBox(height: isSmallScreen ? 30 : 60),
 
-                  // OTP Input Row
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _otpBox(context, first: true),
-                      _otpBox(context),
-                      _otpBox(context),
-                      _otpBox(context, last: true),
-                    ],
-                  ),
+              // OTP Input Row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: List.generate(
+                  6,
+                  (index) => _otpBox(context, index),
+                ),
+              ),
 
-                  const SizedBox(height: 40),
-                  const Text(
-                    "Didn't receive OTP?",
-                    style: TextStyle(color: Colors.grey),
+              const SizedBox(height: 40),
+              const Text(
+                "Didn't receive OTP?",
+                style: TextStyle(color: Colors.grey),
+              ),
+              TextButton(
+                onPressed: _isLoading ? null : () async {
+                  await Supabase.instance.client.auth.signInWithOtp(phone: widget.phoneNumber);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("OTP Resent")));
+                  }
+                },
+                child: const Text(
+                  "Resend Code",
+                  style: TextStyle(
+                    color: Color(0xFF1D3557),
+                    fontWeight: FontWeight.bold,
                   ),
-                  TextButton(
-                    onPressed: () {
-                      // Logic to resend OTP
-                    },
-                    child: const Text(
-                      "Resend Code",
-                      style: TextStyle(
-                        color: Color(0xFF1D3557),
-                        fontWeight: FontWeight.bold,
-                      ),
+                ),
+              ),
+
+              const SizedBox(height: 40),
+
+              SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _verifyOtp,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF000814),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
                     ),
+                    elevation: 0,
                   ),
-
-                  const Spacer(),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const CompleteProfilePage(),
-                          ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF000814),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: const Text(
+                  child: _isLoading 
+                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2,))
+                    : const Text(
                         "Verify OTP",
                         style: TextStyle(
                           color: Colors.white,
@@ -106,43 +172,40 @@ class VerifyCodePage extends StatelessWidget {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-                ],
+                ),
               ),
-            ),
+              const SizedBox(height: 40),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _otpBox(
-    BuildContext context, {
-    bool first = false,
-    bool last = false,
-  }) {
+  Widget _otpBox(BuildContext context, int index) {
     return SizedBox(
-      height: 70,
-      width: 60,
+      height: 60,
+      width: 45,
       child: TextField(
-        autofocus: first,
+        controller: _otpControllers[index],
+        autofocus: index == 0,
         textAlign: TextAlign.center,
         keyboardType: const TextInputType.numberWithOptions(decimal: false),
         maxLength: 1,
         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         onChanged: (value) {
-          if (value.length == 1 && !last) FocusScope.of(context).nextFocus();
-          if (value.isEmpty && !first) FocusScope.of(context).previousFocus();
+          if (value.length == 1 && index < 5) FocusScope.of(context).nextFocus();
+          if (value.isEmpty && index > 0) FocusScope.of(context).previousFocus();
+          if (value.length == 1 && index == 5) _verifyOtp();
         },
         decoration: InputDecoration(
           counterText: "",
           filled: true,
           fillColor: const Color(0xFFFAFAFA),
+          contentPadding: EdgeInsets.zero,
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.grey.shade100),
+            borderSide: BorderSide(color: Colors.grey.shade200),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
