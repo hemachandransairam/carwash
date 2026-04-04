@@ -429,10 +429,16 @@ class _HomeContentState extends State<HomeContent> {
     final bool isShortScreen = size.height < 700;
     final double headerHeight = size.height * (isShortScreen ? 0.25 : 0.28);
 
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    return RefreshIndicator(
+      onRefresh: () async {
+        setState(() {});
+        return Future.delayed(const Duration(milliseconds: 800));
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           // Header Section
           Stack(
             children: [
@@ -1126,6 +1132,7 @@ class _HomeContentState extends State<HomeContent> {
           const SizedBox(height: 100),
         ],
       ),
+    ),
     );
   }
 

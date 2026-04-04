@@ -16,8 +16,10 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
   List<Map<String, dynamic>> _vehicleDetails = [];
   Map<String, dynamic>? _customerData;
   Map<String, dynamic>? _workerData;
-  List<String> _beforePhotos = [];
-  List<String> _afterPhotos = [];
+
+  // Per-vehicle photos keyed by booking_vehicle_id (bv_id)
+  final Map<String, List<String>> _beforePhotos = {};
+  final Map<String, List<String>> _afterPhotos = {};
 
   @override
   void initState() {
@@ -38,28 +40,32 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
       // 2. Fetch Worker Info
       Map<String, dynamic>? worker;
       if (widget.booking['worker_id'] != null) {
-        final wRec = await MockDatabase.instance.from('workers').select('user_id').eq('id', widget.booking['worker_id']).maybeSingle().build<Map<String, dynamic>?>();
+        final workerId = widget.booking['worker_id'];
+        final wRec = await MockDatabase.instance
+            .from('workers')
+            .select('user_id')
+            .eq('id', workerId)
+            .maybeSingle()
+            .build<Map<String, dynamic>?>();
         if (wRec != null) {
-          worker = await MockDatabase.instance.from('users').select().eq('id', wRec['user_id']).maybeSingle().build<Map<String, dynamic>?>();
+          worker = await MockDatabase.instance
+              .from('users')
+              .select()
+              .eq('id', wRec['user_id'])
+              .maybeSingle()
+              .build<Map<String, dynamic>?>();
+        }
+        if (worker == null) {
+          worker = await MockDatabase.instance
+              .from('users')
+              .select()
+              .eq('id', workerId)
+              .maybeSingle()
+              .build<Map<String, dynamic>?>();
         }
       }
 
-      // 3. Fetch Photos from Booking ID folders
-      final String bookingId = widget.booking['id'].toString();
-      List<String> beforeUrls = [];
-      List<String> afterUrls = [];
-
-      try {
-        final beforeFiles = await MockDatabase.instance.client.storage.from('booking-images').list(path: 'before/$bookingId');
-        beforeUrls = beforeFiles.map((f) => MockDatabase.instance.client.storage.from('booking-images').getPublicUrl('before/$bookingId/${f.name}')).toList();
-
-        final afterFiles = await MockDatabase.instance.client.storage.from('booking-images').list(path: 'after/$bookingId');
-        afterUrls = afterFiles.map((f) => MockDatabase.instance.client.storage.from('booking-images').getPublicUrl('after/$bookingId/${f.name}')).toList();
-      } catch (e) {
-        // Silently fail if storage listing errors
-      }
-
-      // 4. Fetch all vehicles for this booking
+      // 3. Fetch all vehicles for this booking
       final vehicles = await MockDatabase.instance
           .from('booking_vehicles')
           .select()
@@ -69,10 +75,12 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
       List<Map<String, dynamic>> details = [];
 
       for (var bv in vehicles) {
+        final String bvId = bv['id'].toString();
+
         // Fetch Vehicle Info
         final vInfo = await MockDatabase.instance
             .from('vehicles')
-            .select('brand_name, car_model, license_plate')
+            .select('brand_name, car_model, license')
             .eq('id', bv['vehicle_id'])
             .maybeSingle()
             .build<Map<String, dynamic>?>();
@@ -81,7 +89,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
         final services = await MockDatabase.instance
             .from('booking_vehicle_services')
             .select('service_id')
-            .eq('booking_vehicle_id', bv['id'])
+            .eq('booking_vehicle_id', bvId)
             .build<List<Map<String, dynamic>>>();
 
         List<String> serviceNames = [];
@@ -95,10 +103,67 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
           if (sInfo != null) serviceNames.add(sInfo['name']);
         }
 
+        // 4. Fetch photos per vehicle from storage: before/{bvId}/ and after/{bvId}/
+        List<String> beforeUrls = [];
+        List<String> afterUrls = [];
+
+        try {
+          // DB: booking_images rows for this booking_vehicle_id
+          final dbBefore = await MockDatabase.instance
+              .from('booking_images')
+              .select('image_url')
+              .eq('booking_id', widget.booking['id'])
+              .eq('booking_vehicle_id', bvId)
+              .eq('image_type', 'BEFORE')
+              .build<List<Map<String, dynamic>>>();
+          beforeUrls.addAll(dbBefore.map((r) => r['image_url'] as String));
+
+          final dbAfter = await MockDatabase.instance
+              .from('booking_images')
+              .select('image_url')
+              .eq('booking_id', widget.booking['id'])
+              .eq('booking_vehicle_id', bvId)
+              .eq('image_type', 'AFTER')
+              .build<List<Map<String, dynamic>>>();
+          afterUrls.addAll(dbAfter.map((r) => r['image_url'] as String));
+        } catch (_) {}
+
+        // Storage: before/{bvId}/ — same path the worker app uploads to
+        try {
+          final beforeFiles = await MockDatabase.instance.client.storage
+              .from('booking-images')
+              .list(path: 'before/$bvId');
+          for (final f in beforeFiles) {
+            if (f.name == '.emptyFolderPlaceholder') continue;
+            final url = MockDatabase.instance.client.storage
+                .from('booking-images')
+                .getPublicUrl('before/$bvId/${f.name}');
+            if (!beforeUrls.contains(url)) beforeUrls.add(url);
+          }
+        } catch (_) {}
+
+        try {
+          final afterFiles = await MockDatabase.instance.client.storage
+              .from('booking-images')
+              .list(path: 'after/$bvId');
+          for (final f in afterFiles) {
+            if (f.name == '.emptyFolderPlaceholder') continue;
+            final url = MockDatabase.instance.client.storage
+                .from('booking-images')
+                .getPublicUrl('after/$bvId/${f.name}');
+            if (!afterUrls.contains(url)) afterUrls.add(url);
+          }
+        } catch (_) {}
+
+        _beforePhotos[bvId] = beforeUrls;
+        _afterPhotos[bvId] = afterUrls;
+
         details.add({
-          'bv_id': bv['id'],
-          'car_name': vInfo != null ? "${vInfo['brand_name']} ${vInfo['car_model']}" : "Unknown Car",
-          'license': vInfo?['license_plate'] ?? "N/A",
+          'bv_id': bvId,
+          'car_name': vInfo != null
+              ? "${vInfo['brand_name']} ${vInfo['car_model']}"
+              : "Unknown Car",
+          'license': vInfo?['license'] ?? "N/A",
           'services': serviceNames,
         });
       }
@@ -107,8 +172,6 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
         setState(() {
           _customerData = customer;
           _workerData = worker;
-          _beforePhotos = beforeUrls;
-          _afterPhotos = afterUrls;
           _vehicleDetails = details;
           _isLoading = false;
         });
@@ -151,21 +214,34 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header Summary Card
                   _buildHeaderCard(status, formattedDate, formattedTime),
                   const SizedBox(height: 24),
 
-                  // Customer & Worker Section
                   Row(
                     children: [
-                      Expanded(child: _buildIdentityCard("Customer", _customerData?['name'] ?? "User", _customerData?['phone'] ?? "No Phone", Icons.person)),
+                      Expanded(
+                        child: _buildIdentityCard(
+                          "Customer",
+                          _customerData?['name'] ?? "User",
+                          _customerData?['phone'] ?? "No Phone",
+                          Icons.person,
+                          _customerData?['avatar_url'],
+                        ),
+                      ),
                       const SizedBox(width: 16),
-                      Expanded(child: _buildIdentityCard("Technician", _workerData?['name'] ?? "Not Assigned", _workerData?['phone'] ?? "No Contact", Icons.engineering)),
+                      Expanded(
+                        child: _buildIdentityCard(
+                          "Technician",
+                          _workerData?['name'] ?? "Not Assigned",
+                          _workerData?['phone'] ?? "No Contact",
+                          Icons.engineering,
+                          _workerData?['avatar_url'],
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 32),
 
-                  // Vehicles Section Label
                   const Text(
                     "Service Details",
                     style: TextStyle(
@@ -176,23 +252,11 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Vehicle Info
+                  // Each vehicle card now includes its own before/after photos
                   ..._vehicleDetails.map((v) => _buildVehicleCard(v)),
 
                   const SizedBox(height: 32),
-                  // Shared Work Photos
-                  const Text(
-                    "Work Photos",
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF01102B),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildPhotoSection("Before Photos", _beforePhotos),
-                  const SizedBox(height: 24),
-                  _buildPhotoSection("After Photos", _afterPhotos),
+                  _buildPaymentDetails(),
                   const SizedBox(height: 40),
                 ],
               ),
@@ -219,24 +283,35 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
                 children: [
                   Text(
                     "Booking ID",
-                    style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.6),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     widget.booking['id'].toString().substring(0, 8).toUpperCase(),
-                    style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 1),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1),
                   ),
                 ],
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
                   color: const Color(0xFF00C853),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
                   status,
-                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800),
                 ),
               ),
             ],
@@ -249,7 +324,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
             children: [
               _buildHeaderInfo(Icons.calendar_month_outlined, "Date", date),
               _buildHeaderInfo(Icons.access_time, "Time", time),
-              _buildHeaderInfo(Icons.directions_car_outlined, "Type", "Sedan"), // Dynamic type can be added later
+              _buildHeaderInfo(Icons.directions_car_outlined, "Type", "Sedan"),
             ],
           ),
         ],
@@ -262,74 +337,165 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
       children: [
         Icon(icon, color: Colors.white.withOpacity(0.6), size: 24),
         const SizedBox(height: 8),
-        Text(label, style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 11, fontWeight: FontWeight.w500)),
+        Text(label,
+            style: TextStyle(
+                color: Colors.white.withOpacity(0.6),
+                fontSize: 11,
+                fontWeight: FontWeight.w500)),
         const SizedBox(height: 4),
-        Text(value, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+        Text(value,
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w700)),
       ],
     );
   }
 
-  Widget _buildIdentityCard(String label, String name, String sub, IconData icon) {
+  Widget _buildIdentityCard(
+      String label, String name, String sub, IconData icon,
+      [String? imageUrl]) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4))
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
-            decoration: const BoxDecoration(color: Color(0xFFF8F9FA), shape: BoxShape.circle),
-            child: Icon(icon, color: const Color(0xFF01102B), size: 18),
+            width: 34,
+            height: 34,
+            decoration:
+                const BoxDecoration(color: Color(0xFFF8F9FA), shape: BoxShape.circle),
+            child: imageUrl != null && imageUrl.isNotEmpty
+                ? ClipOval(
+                    child: Image.network(
+                      imageUrl,
+                      width: 34,
+                      height: 34,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          Icon(icon, color: const Color(0xFF01102B), size: 18),
+                    ),
+                  )
+                : Icon(icon, color: const Color(0xFF01102B), size: 18),
           ),
           const SizedBox(height: 12),
-          Text(label, style: TextStyle(color: Colors.grey[500], fontSize: 10, fontWeight: FontWeight.w600)),
+          Text(label,
+              style: TextStyle(
+                  color: Colors.grey[500],
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600)),
           const SizedBox(height: 2),
-          Text(name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF01102B)), maxLines: 1, overflow: TextOverflow.ellipsis),
-          Text(sub, style: TextStyle(fontSize: 11, color: Colors.grey[600], fontWeight: FontWeight.w500)),
+          Text(name,
+              style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF01102B)),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
+          Text(sub,
+              style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500)),
         ],
       ),
     );
   }
 
+  // Vehicle card now includes before/after photos for that specific vehicle
   Widget _buildVehicleCard(Map<String, dynamic> v) {
+    final bvId = v['bv_id'] as String;
+    final beforePhotos = _beforePhotos[bvId] ?? [];
+    final afterPhotos = _afterPhotos[bvId] ?? [];
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 15, offset: const Offset(0, 8))],
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 15,
+              offset: const Offset(0, 8))
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Vehicle header
           Row(
             children: [
-              const Icon(Icons.directions_car_rounded, color: Color(0xFF01102B), size: 24),
+              const Icon(Icons.directions_car_rounded,
+                  color: Color(0xFF01102B), size: 24),
               const SizedBox(width: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(v['car_name'], style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF01102B))),
-                  Text(v['license'], style: TextStyle(fontSize: 12, color: Colors.grey[500], fontWeight: FontWeight.w700)),
+                  Text(v['car_name'],
+                      style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF01102B))),
+                  Text(v['license'],
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[500],
+                          fontWeight: FontWeight.w700)),
                 ],
               ),
             ],
           ),
           const SizedBox(height: 16),
+
+          // Services
           Wrap(
             spacing: 6,
             runSpacing: 6,
-            children: (v['services'] as List<String>).map((s) => Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(color: const Color(0xFFF1F4F9), borderRadius: BorderRadius.circular(8)),
-              child: Text(s, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF677294))),
-            )).toList(),
+            children: (v['services'] as List<String>)
+                .map((s) => Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                          color: const Color(0xFFF1F4F9),
+                          borderRadius: BorderRadius.circular(8)),
+                      child: Text(s,
+                          style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF677294))),
+                    ))
+                .toList(),
           ),
+
+          // Photos for this vehicle only
+          if (beforePhotos.isNotEmpty || afterPhotos.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            const Divider(color: Color(0xFFF0F0F0)),
+            const SizedBox(height: 16),
+            const Text(
+              "Work Photos",
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF01102B)),
+            ),
+            const SizedBox(height: 12),
+            _buildPhotoSection("Before", beforePhotos),
+            const SizedBox(height: 12),
+            _buildPhotoSection("After", afterPhotos),
+          ],
         ],
       ),
     );
@@ -339,48 +505,150 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF01102B))),
-        const SizedBox(height: 16),
+        Text(title,
+            style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF677294))),
+        const SizedBox(height: 8),
         if (photos.isEmpty)
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: const Color(0xFFF8F9FA),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.grey[200]!),
             ),
             child: const Center(
-              child: Text("No photos available", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
+              child: Text("No photos available",
+                  style: TextStyle(
+                      color: Colors.grey, fontWeight: FontWeight.w500)),
             ),
           )
         else
           SizedBox(
-            height: 120,
+            height: 110,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: photos.length,
-              separatorBuilder: (context, index) => const SizedBox(width: 12),
-              itemBuilder: (context, index) {
-                return ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (context, index) => GestureDetector(
+                onTap: () => _showFullScreenImage(photos[index]),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
                   child: Image.network(
                     photos[index],
-                    width: 160,
-                    height: 120,
+                    width: 140,
+                    height: 110,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) => Container(
-                      width: 160,
-                      height: 120,
+                      width: 140,
+                      height: 110,
                       color: Colors.grey[200],
                       child: const Icon(Icons.broken_image, color: Colors.grey),
                     ),
                   ),
-                );
-              },
+                ),
+              ),
             ),
           ),
       ],
+    );
+  }
+
+  void _showFullScreenImage(String url) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.network(url, fit: BoxFit.contain),
+            ),
+            Positioned(
+              top: 40,
+              right: 20,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaymentDetails() {
+    final base = (widget.booking['base_amount'] ?? 0.0) as num;
+    final discount = (widget.booking['discount_amount'] ?? 0.0) as num;
+    final total = (widget.booking['final_amount'] ?? 0.0) as num;
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 15,
+              offset: const Offset(0, 8))
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("Payment Details",
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF01102B))),
+          const SizedBox(height: 20),
+          _buildPriceRow("Base Service", "Rs. ${base.toStringAsFixed(2)}"),
+          if (discount > 0)
+            _buildPriceRow("Discount", "- Rs. ${discount.toStringAsFixed(2)}",
+                isDiscount: true),
+          const Divider(height: 32, color: Color(0xFFF0F0F0)),
+          _buildPriceRow("Total Paid", "Rs. ${total.toStringAsFixed(2)}",
+              isTotal: true),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPriceRow(String label, String value,
+      {bool isTotal = false, bool isDiscount = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label,
+              style: TextStyle(
+                  color: isTotal
+                      ? const Color(0xFF01102B)
+                      : Colors.grey[500],
+                  fontSize: isTotal ? 16 : 14,
+                  fontWeight:
+                      isTotal ? FontWeight.w800 : FontWeight.w600)),
+          Text(value,
+              style: TextStyle(
+                  color: isDiscount
+                      ? Colors.green
+                      : (isTotal
+                          ? const Color(0xFF01102B)
+                          : Colors.black87),
+                  fontSize: isTotal ? 20 : 15,
+                  fontWeight: FontWeight.w800)),
+        ],
+      ),
     );
   }
 }

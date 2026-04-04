@@ -25,6 +25,13 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
           context: context,
           title: "Booking History",
           showBackButton: Navigator.canPop(context),
+          actions: [
+            IconButton(
+              onPressed: () => setState(() {}),
+              icon: const Icon(Icons.refresh, color: Color(0xFF01102B)),
+            ),
+            const SizedBox(width: 8),
+          ],
           bottom: const TabBar(
             labelColor: Color(0xFF01102B),
             unselectedLabelColor: Colors.grey,
@@ -125,12 +132,19 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
         ),
       );
     }
-    return ListView.builder(
-      padding: const EdgeInsets.all(24),
-      itemCount: bookings.length,
-      itemBuilder: (context, index) {
-        return _buildBookingCard(context, bookings[index], isUnpaid: isUnpaid);
+    return RefreshIndicator(
+      onRefresh: () async {
+        setState(() {});
+        return Future.delayed(const Duration(milliseconds: 800));
       },
+      child: ListView.builder(
+        padding: const EdgeInsets.all(24),
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: bookings.length,
+        itemBuilder: (context, index) {
+          return _buildBookingCard(context, bookings[index], isUnpaid: isUnpaid);
+        },
+      ),
     );
   }
 
