@@ -17,8 +17,11 @@ class BookServicesPage extends StatefulWidget {
 
 class _BookServicesPageState extends State<BookServicesPage> {
   int _currentStep = 0;
+  double _latitude = 0.0;
+  double _longitude = 0.0;
 
   // Vehicle selection
+  final Set<String> _selectedVehicleIds = {};
   String? _selectedVehicleType;
   String? _selectedVehicleBrand;
   String? _selectedVehicleModel;
@@ -33,9 +36,11 @@ class _BookServicesPageState extends State<BookServicesPage> {
   String _selectedTime = "";
 
   // Services selection
-  final Set<String> _selectedServices = {};
+  final Set<String> _selectedServiceIds = {};
   List<Map<String, dynamic>> _availableServices = [];
   bool _isLoadingServices = true;
+  // A matrix of [service_id][vehicle_type] -> price
+  final Map<String, Map<String, double>> _pricingMatrix = {};
 
   IconData _getIconForService(String name) {
     final lower = name.toLowerCase();
@@ -51,9 +56,21 @@ class _BookServicesPageState extends State<BookServicesPage> {
 
   double get _totalPrice {
     double total = 0;
-    for (var s in _availableServices) {
-      if (_selectedServices.contains(s['name'])) {
-        total += s['price'];
+    // For each vehicle, sum its specific service prices
+    for (var vehicleId in _selectedVehicleIds) {
+      final vehicle = _savedVehicles.firstWhere((v) => v['id'] == vehicleId, orElse: () => {});
+      final vType = (vehicle['vehicle_type'] as String?)?.toUpperCase() ?? "SEDAN";
+      
+      for (var sId in _selectedServiceIds) {
+        // Look up price in matrix for THIS car's type, or fallback to base_price from _availableServices if needed
+        final price = _pricingMatrix[sId]?[vType];
+        if (price != null) {
+          total += price;
+        } else {
+          // Fallback to base_price if type not specifically mapped
+          final baseS = _availableServices.firstWhere((s) => s['id'] == sId, orElse: () => {});
+          total += (baseS['base_price'] as num?)?.toDouble() ?? 0.0;
+        }
       }
     }
     return total;
@@ -76,18 +93,41 @@ class _BookServicesPageState extends State<BookServicesPage> {
 
   Future<void> _fetchServices() async {
     try {
-      final data = await MockDatabase.instance
+      // 1. Fetch core services
+      final servicesData = await MockDatabase.instance
           .from('services')
           .select()
           .eq('is_active', true)
           .order('name')
           .build<List<Map<String, dynamic>>>();
+
+      // 2. Fetch ALL pricing data to build the matrix
+      final pricingData = await MockDatabase.instance
+          .from('service_pricing')
+          .select()
+          .build<List<Map<String, dynamic>>>();
+
+      _pricingMatrix.clear();
+      for (var p in pricingData) {
+        final sId = p['service_id'] as String;
+        final vType = (p['vehicle_type'] as String).toUpperCase();
+        final price = (p['price'] as num).toDouble();
+        
+        _pricingMatrix.putIfAbsent(sId, () => {});
+        _pricingMatrix[sId]![vType] = price;
+      }
       
       setState(() {
-        _availableServices = data.map((s) => {
-          ...s,
-          'price': (s['base_price'] as num).toDouble(), // Map base_price to price for logic consistency
-          'icon': _getIconForService(s['name']),
+        _availableServices = servicesData.map((s) {
+          // Use first car's type as the visual reference in the list for now
+          final firstType = (_selectedVehicleType ?? "SEDAN").toUpperCase();
+          final double finalPrice = _pricingMatrix[s['id']]?[firstType] ?? (s['base_price'] as num).toDouble();
+          
+          return {
+            ...s,
+            'price': finalPrice,
+            'icon': _getIconForService(s['name']),
+          };
         }).toList();
         _isLoadingServices = false;
       });
@@ -196,8 +236,9 @@ class _BookServicesPageState extends State<BookServicesPage> {
                 (context) => BookingSummaryPage(
                   selectedServices:
                       _availableServices
-                          .where((s) => _selectedServices.contains(s['name']))
+                          .where((s) => _selectedServiceIds.contains(s['id']))
                           .toList(),
+                  selectedVehicles: _savedVehicles.where((v) => _selectedVehicleIds.contains(v['id'])).toList(),
                   totalPrice: _totalPrice,
                   selectedDate: _selectedDate,
                   selectedTime: _selectedTime,
@@ -205,11 +246,13 @@ class _BookServicesPageState extends State<BookServicesPage> {
                   addressLabel: _addressLabel ?? "Selected Address",
                   vehicle: {
                     'id': _selectedVehicleId ?? '',
-                    'vehicle_type': _selectedVehicleType!,
+                    'vehicle_type': _selectedVehicleType ?? 'SEDAN',
                     'brand_name': _selectedVehicleBrand ?? '',
                     'car_model': _selectedVehicleModel ?? '',
                     'license': _selectedVehicleLicense ?? '',
                   },
+                  latitude: _latitude,
+                  longitude: _longitude,
                 ),
           ),
         );
@@ -230,7 +273,7 @@ class _BookServicesPageState extends State<BookServicesPage> {
       case 0: // Vehicle
         return _selectedVehicleType != null;
       case 1: // Services
-        return _selectedServices.isNotEmpty;
+        return _selectedServiceIds.isNotEmpty;
       case 2: // Schedule
         return _selectedTime.isNotEmpty;
       case 3: // Address
@@ -331,7 +374,26 @@ class _BookServicesPageState extends State<BookServicesPage> {
                 ],
               ),
             )
-          else if (_currentStep > 1)
+          else if (_currentStep == 0)
+            // Multi-Vehicle Continue
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, -5),
+                  ),
+                ],
+              ),
+              child: buildPrimaryButton(
+                text: "Continue with ${_selectedVehicleIds.length} Vehicles",
+                onTap: _selectedVehicleIds.isNotEmpty ? _nextStep : null,
+              ),
+            )
+          else
             // Continue button for other steps (Schedule, Address)
             Container(
               padding: const EdgeInsets.all(20),
@@ -448,19 +510,31 @@ class _BookServicesPageState extends State<BookServicesPage> {
           // Show saved vehicles
           else if (_savedVehicles.isNotEmpty)
             ..._savedVehicles.map((vehicle) {
-              final isSelected =
-                  _selectedVehicleType == vehicle['vehicle_type'] &&
-                  _selectedVehicleBrand == vehicle['brand_name'];
+              final isSelected = _selectedVehicleIds.contains(vehicle['id']);
               return GestureDetector(
                 onTap: () {
                   setState(() {
-                    _selectedVehicleId = vehicle['id'];
-                    _selectedVehicleType = vehicle['vehicle_type'];
-                    _selectedVehicleBrand = vehicle['brand_name'];
-                    _selectedVehicleModel = vehicle['car_model'];
-                    _selectedVehicleLicense = vehicle['license'];
-                    // Automatically move to next step
-                    _currentStep = 1;
+                    if (isSelected) {
+                      _selectedVehicleIds.remove(vehicle['id']);
+                      if (_selectedVehicleIds.isEmpty) {
+                        _selectedVehicleId = null;
+                        _selectedVehicleType = null;
+                      }
+                    } else {
+                      _selectedVehicleIds.add(vehicle['id']);
+                      // First selected becomes the primary for backward compatibility
+                      _selectedVehicleId ??= vehicle['id'];
+                      _selectedVehicleType ??= vehicle['vehicle_type'];
+                      _selectedVehicleBrand = vehicle['brand_name'];
+                      _selectedVehicleModel = vehicle['car_model'];
+                      _selectedVehicleLicense = vehicle['license'];
+                    }
+                    
+                    // Refresh services to get pricing (using the first selected as reference for UI list)
+                    if (_selectedVehicleType != null) {
+                      _isLoadingServices = true;
+                      _fetchServices();
+                    }
                   });
                 },
                 child: Container(
@@ -691,11 +765,11 @@ class _BookServicesPageState extends State<BookServicesPage> {
                       title: s['name'],
                       icon: s['icon'],
                       price: s['price'].toDouble(),
-                      isSelected: _selectedServices.contains(s['name']),
+                      isSelected: _selectedServiceIds.contains(s['id']),
                       onTap: () => setState(() {
-                        _selectedServices.contains(s['name'])
-                            ? _selectedServices.remove(s['name'])
-                            : _selectedServices.add(s['name']);
+                        _selectedServiceIds.contains(s['id'])
+                            ? _selectedServiceIds.remove(s['id'])
+                            : _selectedServiceIds.add(s['id']);
                       }),
                     ),
                   );

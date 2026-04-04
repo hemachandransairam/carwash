@@ -259,14 +259,14 @@ class _MyVehiclesPageState extends State<MyVehiclesPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                v['name'],
+                                v['name'] ?? v['brand_name'] ?? 'Unnamed Vehicle',
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w800,
                                   fontSize: 16,
                                 ),
                               ),
                               Text(
-                                "${v['brand']} • ${v['type']}",
+                                "${v['brand'] ?? v['brand_name'] ?? 'Unknown'} • ${v['type'] ?? v['vehicle_type'] ?? 'Unknown'}",
                                 style: TextStyle(
                                   color: Colors.grey[500],
                                   fontSize: 12,

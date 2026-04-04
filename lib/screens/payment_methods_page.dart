@@ -5,22 +5,30 @@ import 'e_ticket_page.dart';
 
 class PaymentMethodsPage extends StatefulWidget {
   final List<String> selectedServices;
+  final List<String> selectedServiceIds;
+  final List<String> selectedVehicleIds;
   final double totalPrice;
   final DateTime selectedDate;
   final String selectedTime;
-  final Map<String, String> vehicle;
+  final Map<String, dynamic> vehicle;
   final String addressLabel;
   final String addressText;
+  final double latitude;
+  final double longitude;
 
   const PaymentMethodsPage({
     super.key,
     required this.selectedServices,
+    required this.selectedServiceIds,
+    required this.selectedVehicleIds,
     required this.totalPrice,
     required this.selectedDate,
     required this.selectedTime,
     required this.vehicle,
     required this.addressLabel,
     required this.addressText,
+    this.latitude = 0.0,
+    this.longitude = 0.0,
   });
 
   @override
@@ -114,16 +122,12 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
         throw Exception("Unable to find an available approved worker right now.");
       }
 
-      // 3. Create the booking with the designated worker_id
-      // Mock mapping of service names to UUIDs for the service_id array
-      final List<String> serviceUuids = widget.selectedServices.map((name) {
-        return '00000000-0000-0000-0000-${name.length.toRadixString(16).padLeft(12, '0')}';
-      }).toList();
-
+      // 3. Create the core booking
       final response = await MockDatabase.instance.client.from('bookings').insert({
         'user_id': user['id'],
-        'service_id': serviceUuids,
+        'service_id': widget.selectedServiceIds,
         'vehicle_id': widget.vehicle['id'],
+        'vehicle_ids': widget.selectedVehicleIds,
         'worker_id': assignedWorkerId,
         'booking_type': 'SCHEDULED',
         'scheduled_at': widget.selectedDate.toUtc().toIso8601String(),
@@ -134,9 +138,30 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
         'discount_amount': 0.0,
         'final_amount': widget.totalPrice + 199 + 20,
         'qr_token': 'QR-${DateTime.now().millisecondsSinceEpoch}',
-        'latitude': 0.0,
-        'longitude': 0.0,
+        'latitude': widget.latitude,
+        'longitude': widget.longitude,
       }).select().single().build<Map<String, dynamic>>();
+
+      final bookingId = response['id'];
+
+      // 4. Create junction rows for EACH vehicle selected (Many-to-Many Bridge)
+      for (var vId in widget.selectedVehicleIds) {
+        final bvResponse = await MockDatabase.instance.client.from('booking_vehicles').insert({
+          'booking_id': bookingId,
+          'vehicle_id': vId,
+        }).select().single().build<Map<String, dynamic>>();
+
+        final bvId = bvResponse['id'];
+
+        // 5. Create service junction rows for EACH service for THIS vehicle
+        // (Allows per-vehicle checklists and service tracking)
+        for (var sId in widget.selectedServiceIds) {
+          await MockDatabase.instance.client.from('booking_vehicle_services').insert({
+            'booking_vehicle_id': bvId,
+            'service_id': sId,
+          }).build();
+        }
+      }
 
       if (mounted) {
         setState(() => _isSaving = false);

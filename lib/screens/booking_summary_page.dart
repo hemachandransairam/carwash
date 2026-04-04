@@ -4,22 +4,28 @@ import 'payment_methods_page.dart';
 
 class BookingSummaryPage extends StatelessWidget {
   final List<Map<String, dynamic>> selectedServices;
+  final List<Map<String, dynamic>> selectedVehicles;
   final double totalPrice;
   final DateTime selectedDate;
   final String selectedTime;
-  final Map<String, String> vehicle;
+  final Map<String, dynamic> vehicle;
   final String addressLabel;
   final String addressText;
+  final double latitude;
+  final double longitude;
 
   const BookingSummaryPage({
     super.key,
     required this.selectedServices,
+    required this.selectedVehicles,
     required this.totalPrice,
     required this.selectedDate,
     required this.selectedTime,
     required this.vehicle,
     required this.addressLabel,
     required this.addressText,
+    this.latitude = 0.0,
+    this.longitude = 0.0,
   });
 
   @override
@@ -281,12 +287,22 @@ class BookingSummaryPage extends StatelessWidget {
                           selectedServices
                               .map((s) => s['name'] as String)
                               .toList(),
+                      selectedServiceIds: 
+                          selectedServices
+                              .map((s) => s['id'] as String)
+                              .toList(),
+                      selectedVehicleIds:
+                          selectedVehicles
+                              .map((v) => v['id'] as String)
+                              .toList(),
                       totalPrice: totalPrice + 199 + 20,
                       selectedDate: selectedDate,
                       selectedTime: selectedTime,
                       vehicle: vehicle,
                       addressLabel: addressLabel,
                       addressText: addressText,
+                      latitude: latitude,
+                      longitude: longitude,
                     ),
               ),
             );

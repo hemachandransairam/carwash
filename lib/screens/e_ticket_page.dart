@@ -14,7 +14,7 @@ import 'package:printing/printing.dart';
 class ETicketPage extends StatelessWidget {
   final String? bookingId;
   final String? qrToken;
-  final Map<String, String> vehicle;
+  final Map<String, dynamic> vehicle;
   final List<String> selectedServices;
   final DateTime selectedDate;
   final String selectedTime;

@@ -7,7 +7,8 @@ class SelectServicesPage extends StatefulWidget {
   final String selectedTime;
   final String address;
   final String addressLabel;
-  final Map<String, String> vehicle;
+  final Map<String, dynamic> vehicle;
+  final List<Map<String, dynamic>> selectedVehicles;
 
   const SelectServicesPage({
     super.key,
@@ -16,6 +17,7 @@ class SelectServicesPage extends StatefulWidget {
     required this.address,
     required this.addressLabel,
     required this.vehicle,
+    this.selectedVehicles = const [],
   });
 
   @override
@@ -157,7 +159,8 @@ class _SelectServicesPageState extends State<SelectServicesPage> {
                                                     .contains(s['name']),
                                               )
                                               .toList(),
-                                      totalPrice: _totalPrice,
+                                      selectedVehicles: widget.selectedVehicles.isNotEmpty ? widget.selectedVehicles : [widget.vehicle],
+                                      totalPrice: _totalPrice * (widget.selectedVehicles.isNotEmpty ? widget.selectedVehicles.length : 1),
                                       selectedDate: widget.selectedDate,
                                       selectedTime: widget.selectedTime,
                                       vehicle: widget.vehicle,

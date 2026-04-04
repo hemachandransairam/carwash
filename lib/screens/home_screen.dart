@@ -243,13 +243,10 @@ class _HomeContentState extends State<HomeContent> {
         .limit(5)
         .build<List<Map<String, dynamic>>>();
 
-    final List<String> recentAddresses = [];
-    for (var r in response) {
-      final addr = "${r['house_no'] ?? ''} ${r['street'] ?? r['city'] ?? ''}".trim();
-      if (addr.isNotEmpty && !recentAddresses.contains(addr)) {
-        recentAddresses.add(addr);
-      }
-    }
+    final List<Map<String, dynamic>> recentAddresses = response.map((r) => {
+      'id': r['id'],
+      'display': "${r['house_no'] ?? ''} ${r['street'] ?? r['city'] ?? ''}".trim(),
+    }).toList();
 
     if (!mounted) return;
 
@@ -286,14 +283,14 @@ class _HomeContentState extends State<HomeContent> {
                             child: Text("No recent addresses found."),
                           ),
                         ...recentAddresses.map(
-                          (addr) => ListTile(
+                          (item) => ListTile(
                             leading: const Icon(
                               Icons.history,
                               color: Colors.grey,
                             ),
-                            title: Text(addr),
+                            title: Text(item['display'] ?? ''),
                             onTap: () {
-                              setState(() => _currentAddress = addr);
+                              setState(() => _currentAddress = item['display'] ?? '');
                               Navigator.pop(context);
                             },
                           ),
@@ -338,26 +335,26 @@ class _HomeContentState extends State<HomeContent> {
                                     ),
                                   ),
                                 ),
-                                onSubmitted: (value) {
+                                onSubmitted: (value) async {
                                   if (value.trim().isNotEmpty) {
-                                    setState(
-                                      () => _currentAddress = value.trim(),
-                                    );
+                                    final trimmed = value.trim();
+                                    setState(() => _currentAddress = trimmed);
                                     Navigator.pop(context);
+                                    // Persistent Save
+                                    await _saveNewAddress(trimmed);
                                   }
                                 },
                               ),
                             ),
                             const SizedBox(width: 12),
                             IconButton(
-                              onPressed: () {
+                              onPressed: () async {
                                 if (addressController.text.trim().isNotEmpty) {
-                                  setState(
-                                    () =>
-                                        _currentAddress =
-                                            addressController.text.trim(),
-                                  );
+                                  final trimmed = addressController.text.trim();
+                                  setState(() => _currentAddress = trimmed);
                                   Navigator.pop(context);
+                                  // Persistent Save
+                                  await _saveNewAddress(trimmed);
                                 }
                               },
                               icon: const Icon(
@@ -398,6 +395,31 @@ class _HomeContentState extends State<HomeContent> {
             ),
           ),
     );
+  }
+
+  // Helper to persist new address to history
+  Future<void> _saveNewAddress(String addressPart) async {
+    try {
+      final user = MockDatabase.instance.auth.currentUser;
+      if (user == null) return;
+      
+      // Upsert into addresses table. (Simplistic: splitting into city for mock data)
+      final parts = addressPart.split(' ');
+      final city = parts.last;
+      final street = parts.length > 1 ? parts.sublist(0, parts.length - 1).join(' ') : addressPart;
+
+      await MockDatabase.instance.from('addresses').insert({
+        'user_id': user['id'],
+        'house_no': 'New',
+        'street': street,
+        'city': city,
+        'latitude': 0.0,
+        'longitude': 0.0,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      }).build();
+    } catch (e) {
+      debugPrint("Error saving address: $e");
+    }
   }
 
   @override
@@ -919,11 +941,11 @@ class _HomeContentState extends State<HomeContent> {
 
           const SizedBox(height: 28),
 
-          // Recent History Section
+          // Ongoing Services Section
           Padding(
             padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
             child: const Text(
-              'Recent History',
+              'Ongoing Services',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
@@ -936,12 +958,12 @@ class _HomeContentState extends State<HomeContent> {
             stream: _activeOrderStream,
             builder: (context, snapshot) {
               final allBookings = snapshot.data ?? [];
-              final recentBookings = allBookings.where((b) {
+              final ongoingBookings = allBookings.where((b) {
                 final status = (b['status'] as String? ?? '').toUpperCase();
-                return status == 'COMPLETED' || status == 'CANCELLED';
-              }).take(3).toList();
+                return status == 'ASSIGNED' || status == 'ARRIVED' || status == 'IN_PROGRESS' || status == 'PENDING';
+              }).toList();
 
-              if (recentBookings.isEmpty) {
+              if (ongoingBookings.isEmpty) {
                 return Padding(
                   padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
                   child: Container(
@@ -961,13 +983,13 @@ class _HomeContentState extends State<HomeContent> {
                     child: Column(
                       children: [
                         Icon(
-                          Icons.history_outlined,
+                          Icons.running_with_errors_outlined,
                           size: 48,
                           color: Colors.grey[300],
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'No Recent History',
+                          'No Ongoing Services',
                           style: TextStyle(
                             color: Colors.grey[500],
                             fontSize: 16,
@@ -981,7 +1003,9 @@ class _HomeContentState extends State<HomeContent> {
               }
 
               return Column(
-                children: recentBookings.map((booking) {
+                children: ongoingBookings.map((booking) {
+                  final statusStr = booking['status'].toString().toUpperCase();
+                  
                   return Padding(
                     padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8),
                     child: GestureDetector(
@@ -999,54 +1023,96 @@ class _HomeContentState extends State<HomeContent> {
                             ),
                           ],
                         ),
-                        child: Row(
+                        child: Column(
                           children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF6F6F6),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Icon(Icons.directions_car, color: Color(0xFF01102B), size: 20),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  FutureBuilder<Map<String, dynamic>?>(
-                                    future: MockDatabase.instance.from('vehicles').select('brand_name, car_model').eq('id', booking['vehicle_id'] ?? '').maybeSingle().build<Map<String, dynamic>?>(),
-                                    builder: (context, vSnap) {
-                                      final car = vSnap.data;
-                                      return Text(
-                                        car != null ? "${car['brand_name']} ${car['car_model']}" : "Car Details",
-                                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-                                      );
-                                    }
-                                  ),
-                                  Text(
-                                    DateFormat('d MMM yyyy').format(DateTime.parse(booking['scheduled_at'])),
-                                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
+                            Row(
                               children: [
-                                Text(
-                                  "Rs. ${booking['final_amount']}",
-                                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF01102B)),
-                                ),
-                                Text(
-                                  booking['status'].toString().toUpperCase(),
-                                  style: TextStyle(
-                                    color: booking['status'].toString().toUpperCase() == 'COMPLETED' ? Colors.green : Colors.red,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF6F6F6),
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
+                                  child: Icon(
+                                    statusStr == 'IN_PROGRESS' ? Icons.play_circle_fill : Icons.directions_car, 
+                                    color: const Color(0xFF01102B), 
+                                    size: 20
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      FutureBuilder<Map<String, dynamic>?>(
+                                        future: MockDatabase.instance.from('vehicles').select('brand_name, car_model').eq('id', booking['vehicle_id'] ?? '').maybeSingle().build<Map<String, dynamic>?>(),
+                                        builder: (context, vSnap) {
+                                          final car = vSnap.data;
+                                          return Text(
+                                            car != null ? "${car['brand_name']} ${car['car_model']}" : "Car Details",
+                                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                                          );
+                                        }
+                                      ),
+                                      Text(
+                                        DateFormat('d MMM • h:mm a').format(DateTime.parse(booking['scheduled_at'])),
+                                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      "Rs. ${booking['final_amount']}",
+                                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF01102B)),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: statusStr == 'IN_PROGRESS' ? Colors.blue[50] : Colors.green[50],
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        statusStr,
+                                        style: TextStyle(
+                                          color: statusStr == 'IN_PROGRESS' ? Colors.blue[700] : Colors.green[700],
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
+                            ),
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                              child: Divider(height: 1),
+                            ),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 36,
+                              child: ElevatedButton(
+                                onPressed: () => _showCancelDialog(booking['id']),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red[50],
+                                  foregroundColor: Colors.red,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                child: const Text(
+                                  "Cancel Service",
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
                             ),
                           ],
                         ),

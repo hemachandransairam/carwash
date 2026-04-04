@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../core/services/mock_database.dart';
 import 'package:intl/intl.dart';
 import '../widgets/custom_widgets.dart';
+import 'e_ticket_page.dart';
+import 'order_details_page.dart';
 
 class BookingHistoryPage extends StatefulWidget {
   const BookingHistoryPage({super.key});
@@ -30,7 +32,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
             labelStyle: TextStyle(fontWeight: FontWeight.w700),
             tabs: [
               Tab(text: "Ongoing"),
-              Tab(text: "Unpaid"),
+              Tab(text: "Cancelled"),
               Tab(text: "Completed"),
             ],
           ),
@@ -68,34 +70,29 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
                           ].contains(s);
                         }).toList();
 
-                    final unpaid =
+                    final cancelled =
                         bookings.where((b) {
                           final s = (b['status'] ?? '').toUpperCase();
                           return [
-                            'PAYMENT_PENDING',
-                            'WORK_COMPLETED',
+                            'CANCELLED',
+                            'REJECTED',
                           ].contains(s);
                         }).toList();
 
                     final completed =
                         bookings.where((b) {
                           final s = (b['status'] ?? '').toUpperCase();
-                          return [
-                            'COMPLETED',
-                            'CANCELLED',
-                            'REJECTED',
-                          ].contains(s);
+                          return s == 'COMPLETED';
                         }).toList();
 
                     return TabBarView(
                       children: [
                         _buildBookingList(ongoing, "No ongoing orders"),
                         _buildBookingList(
-                          unpaid,
-                          "No unpaid orders",
-                          isUnpaid: true,
+                          cancelled,
+                          "No cancelled orders",
                         ),
-                        _buildBookingList(completed, "No past orders"),
+                        _buildBookingList(completed, "No completed orders"),
                       ],
                     );
                   },
@@ -147,12 +144,17 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
     final status = booking['status'] ?? 'Pending';
     final price = booking['total_price'] ?? 0;
 
-    // Check payment method. If not present, default to Cash.
-    final paymentMethod = booking['payment_method'] ?? 'Cash';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(20),
+    return GestureDetector(
+      onTap: () {
+        if (status.toUpperCase() == 'COMPLETED') {
+          Navigator.push(context, MaterialPageRoute(builder: (context) => OrderDetailsPage(booking: booking)));
+        } else if (['PENDING', 'CONFIRMED', 'ACCEPTED', 'IN_PROGRESS', 'ARRIVED', 'ASSIGNED'].contains(status.toUpperCase())) {
+          _navigateToTicket(context, booking);
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 20),
+        padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
@@ -243,182 +245,92 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
             ],
           ),
 
-          if (isUnpaid) ...[
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton.icon(
-                onPressed:
-                    () => _showPaymentDialog(context, booking, paymentMethod),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF01102B),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+          if (['PENDING', 'CONFIRMED', 'ACCEPTED', 'IN_PROGRESS', 'ARRIVED', 'ASSIGNED'].contains(status.toUpperCase())) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 44,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _navigateToTicket(context, booking),
+                      icon: const Icon(Icons.qr_code_scanner, size: 18),
+                      label: const Text("View Ticket", style: TextStyle(fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF01102B),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-                icon: const Icon(Icons.payment, size: 20),
-                label: const Text(
-                  "Pay Now",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
-          ] else if (status.toLowerCase().contains('pending')) ...[
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 44,
-              child: ElevatedButton(
-                onPressed: () => _cancelBooking(context, booking['id']),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF01102B),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                const SizedBox(width: 12),
+                SizedBox(
+                  height: 44,
+                  child: OutlinedButton(
+                    onPressed: () => _cancelBooking(context, booking['id']),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text("Cancel", style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ),
-                child: const Text(
-                  "Cancel Booking",
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
+              ],
             ),
           ],
         ],
       ),
+    ),
     );
   }
 
-  void _showPaymentDialog(
-    BuildContext context,
-    Map<String, dynamic> booking,
-    String method,
-  ) {
-    // If UPI/Online -> Show QR.
-    // If Cash -> Show Amount + Pay button.
-    // Assuming method detection logic.
-    final bool isOnline = method.toLowerCase() != 'cash';
-    final double amount = (booking['total_price'] ?? 0).toDouble();
-
+  Future<void> _navigateToTicket(BuildContext context, Map<String, dynamic> booking) async {
+    // Show loading indicator
     showDialog(
       context: context,
-      builder:
-          (context) => Dialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    isOnline ? "Scan to Pay" : "Pay via Cash",
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF01102B),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  if (isOnline)
-                    Container(
-                      width: 200,
-                      height: 200,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey[300]!),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Image.network(
-                        "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=merchant@upi&pn=WinkWash&am=$amount&tn=Order${booking['id']}",
-                        errorBuilder:
-                            (_, __, ___) =>
-                                const Icon(Icons.qr_code_2, size: 64),
-                        loadingBuilder:
-                            (_, child, progress) =>
-                                progress == null
-                                    ? child
-                                    : const Center(
-                                      child: CircularProgressIndicator(),
-                                    ),
-                      ),
-                    )
-                  else
-                    Column(
-                      children: [
-                        const Icon(Icons.money, size: 64, color: Colors.green),
-                        const SizedBox(height: 16),
-                        Text(
-                          "Rs. $amount",
-                          style: const TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF01102B),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        const Text("Please hand over cash to the agent"),
-                      ],
-                    ),
-
-                  const SizedBox(height: 32),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: () async {
-                        // Mark as Paid/Completed
-                        Navigator.pop(context);
-                        await _completePayment(context, booking['id']);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(25),
-                        ),
-                      ),
-                      child: const Text(
-                        "Confirm Payment",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.white)),
     );
-  }
 
-  Future<void> _completePayment(BuildContext context, dynamic bookingId) async {
     try {
-      await MockDatabase.instance
-          .from('bookings')
-          .update({'status': 'completed'}) // Mark as fully completed
-          .eq('id', bookingId)
-          .build<void>();
+      final vehicle = await MockDatabase.instance.from('vehicles').select().eq('id', booking['vehicle_id']).maybeSingle().build<Map<String, dynamic>?>();
+      final address = await MockDatabase.instance.from('addresses').select().eq('user_id', booking['user_id']).limit(1).maybeSingle().build<Map<String, dynamic>?>();
+      Map<String, dynamic>? worker;
+      if (booking['worker_id'] != null) {
+        final workerRec = await MockDatabase.instance.from('workers').select('user_id').eq('id', booking['worker_id']).maybeSingle().build<Map<String, dynamic>?>();
+        if (workerRec != null) {
+          worker = await MockDatabase.instance.from('users').select().eq('id', workerRec['user_id']).maybeSingle().build<Map<String, dynamic>?>();
+        }
+      }
 
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Payment Successful! Order Completed."),
-            backgroundColor: Colors.green,
+        Navigator.pop(context); // Remove loading
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ETicketPage(
+              bookingId: booking['id']?.toString(),
+              qrToken: booking['qr_token']?.toString(),
+              vehicle: vehicle ?? {},
+              selectedServices: List<String>.from(booking['service_id'] ?? []),
+              selectedDate: DateTime.parse(booking['scheduled_at']),
+              selectedTime: DateFormat('hh:mm a').format(DateTime.parse(booking['scheduled_at'])),
+              addressLabel: "Home",
+              addressText: address != null ? [address['house_no'], address['street'], address['city']].where((e) => e != null).join(", ") : "No Address",
+              totalPrice: (booking['final_amount'] ?? 0).toDouble(),
+              worker: worker,
+            ),
           ),
         );
       }
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
-        );
-      }
+      if (context.mounted) Navigator.pop(context);
     }
   }
 
