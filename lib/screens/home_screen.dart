@@ -6,6 +6,8 @@ import 'booking_history_page.dart';
 import 'profile_page.dart';
 import 'notification_page.dart';
 import 'package:modal_bottom_sheet/modal_bottom_sheet.dart';
+import 'package:intl/intl.dart';
+import 'e_ticket_page.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -193,7 +195,7 @@ class _HomeContentState extends State<HomeContent> {
         .stream(primaryKey: ['id'])
         .eq('user_id', user?['id'] ?? '')
         .order('created_at', ascending: false)
-        .limit(1) as Stream<List<Map<String, dynamic>>>;
+        .limit(5) as Stream<List<Map<String, dynamic>>>;
 
     // Start at a large index in the middle for circular scrolling simulation
     _currentBannerPage = _infinitePageCount ~/ 2;
@@ -656,20 +658,29 @@ class _HomeContentState extends State<HomeContent> {
                 return const SizedBox.shrink();
               }
 
-              final bookings = snapshot.data ?? [];
+              final allBookings = snapshot.data ?? [];
               Map<String, dynamic>? activeBooking;
 
-              if (bookings.isNotEmpty) {
-                final booking = bookings.first;
-                final status =
-                    (booking['status'] as String? ?? '').toLowerCase();
-                if (status == 'pending' || status == 'confirmed') {
-                  activeBooking = booking;
-                }
+              if (allBookings.isNotEmpty) {
+                activeBooking = allBookings.firstWhere(
+                  (b) {
+                    final status = (b['status'] as String? ?? '').toUpperCase();
+                    return status == 'ASSIGNED' || status == 'CONFIRMED' || status == 'PENDING';
+                  },
+                  orElse: () => {},
+                );
+                if (activeBooking.isEmpty) activeBooking = null;
               }
 
               if (activeBooking == null) {
                 return const SizedBox.shrink();
+              }
+              
+              // Helper to get formatted date
+              String formatDateTime(String? iso) {
+                if (iso == null) return "N/A";
+                final dt = DateTime.parse(iso).toLocal();
+                return DateFormat('EEE, d MMM • h:mm a').format(dt);
               }
 
               return Padding(
@@ -686,7 +697,9 @@ class _HomeContentState extends State<HomeContent> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    Container(
+                    GestureDetector(
+                      onTap: () => _navigateToTicket(activeBooking!),
+                      child: Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
@@ -710,25 +723,43 @@ class _HomeContentState extends State<HomeContent> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      "${activeBooking['vehicle_name']}", 
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w800,
-                                        color: Color(0xFF01102B),
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                      maxLines: 1,
-                                    ),
-                                    Text(
-                                      activeBooking['vehicle_type'] ?? '',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: Colors.grey[600],
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                      maxLines: 1,
+                                    FutureBuilder<Map<String, dynamic>?>(
+                                      future: MockDatabase.instance
+                                          .from('vehicles')
+                                          .select('brand_name, car_model, vehicle_type')
+                                          .eq('id', activeBooking['vehicle_id'] ?? '')
+                                          .maybeSingle()
+                                          .build<Map<String, dynamic>?>(),
+                                      builder: (context, vSnap) {
+                                        final car = vSnap.data;
+                                        return Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              car != null 
+                                                ? "${car['brand_name']} ${car['car_model']}"
+                                                : "Fetching Car...",
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w800,
+                                                color: Color(0xFF01102B),
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                              maxLines: 1,
+                                            ),
+                                            Text(
+                                              car?['vehicle_type'] ?? '...',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: Colors.grey[600],
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                              maxLines: 1,
+                                            ),
+                                          ],
+                                        );
+                                      }
                                     ),
                                   ],
                                 ),
@@ -740,7 +771,7 @@ class _HomeContentState extends State<HomeContent> {
                                 ),
                                 decoration: BoxDecoration(
                                   color:
-                                      (activeBooking['status'] == 'pending')
+                                      (activeBooking['status'].toString().toUpperCase() == 'PENDING')
                                           ? const Color(0xFFFFF4E5)
                                           : const Color(0xFFE8F5E9),
                                   borderRadius: BorderRadius.circular(20),
@@ -752,7 +783,7 @@ class _HomeContentState extends State<HomeContent> {
                                     fontSize: 12,
                                     fontWeight: FontWeight.w700,
                                     color:
-                                        (activeBooking['status'] == 'pending')
+                                        (activeBooking['status'].toString().toUpperCase() == 'PENDING')
                                             ? const Color(0xFFFF9800)
                                             : const Color(0xFF4CAF50),
                                   ),
@@ -773,7 +804,7 @@ class _HomeContentState extends State<HomeContent> {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                "${activeBooking['booking_date']} • ${activeBooking['booking_time']}",
+                                formatDateTime(activeBooking['scheduled_at']),
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w600,
                                   fontSize: 13,
@@ -792,17 +823,32 @@ class _HomeContentState extends State<HomeContent> {
                                 color: Colors.grey,
                               ),
                               const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  activeBooking['address_text'] ?? '',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 13,
-                                    color: Colors.grey[700],
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                              FutureBuilder<Map<String, dynamic>?>(
+                                future: MockDatabase.instance.client
+                                  .from('addresses')
+                                  .select('house_no, street, city')
+                                  .eq('user_id', activeBooking['user_id'] ?? '')
+                                  .limit(1)
+                                  .maybeSingle()
+                                  .build<Map<String, dynamic>?>(),
+                                builder: (context, aSnap) {
+                                  final addr = aSnap.data;
+                                  final addrText = addr != null 
+                                    ? [addr['house_no'], addr['street'], addr['city']].where((e) => e != null && e.toString().isNotEmpty).join(", ")
+                                    : "Fetching location...";
+                                  return Expanded(
+                                    child: Text(
+                                      addrText,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 13,
+                                        color: Colors.grey[700],
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  );
+                                }
                               ),
                             ],
                           ),
@@ -819,7 +865,7 @@ class _HomeContentState extends State<HomeContent> {
                                 ),
                               ),
                               Text(
-                                "Rs. ${activeBooking['total_price']}",
+                                "Rs. ${activeBooking['final_amount'] ?? activeBooking['base_amount'] ?? '0'}",
                                 style: const TextStyle(
                                   color: Color(0xFF01102B),
                                   fontSize: 16,
@@ -864,9 +910,10 @@ class _HomeContentState extends State<HomeContent> {
                         ],
                       ),
                     ),
-                  ],
-                ),
-              );
+                  ),
+                ],
+              ),
+            );
             },
           ),
 
@@ -885,51 +932,130 @@ class _HomeContentState extends State<HomeContent> {
             ),
           ),
           const SizedBox(height: 16),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(30),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
-                    blurRadius: 15,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.history_outlined,
-                    size: 48,
-                    color: Colors.grey[300],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No Recent History',
-                    style: TextStyle(
-                      color: Colors.grey[500],
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+            StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _activeOrderStream,
+            builder: (context, snapshot) {
+              final allBookings = snapshot.data ?? [];
+              final recentBookings = allBookings.where((b) {
+                final status = (b['status'] as String? ?? '').toUpperCase();
+                return status == 'COMPLETED' || status == 'CANCELLED';
+              }).take(3).toList();
+
+              if (recentBookings.isEmpty) {
+                return Padding(
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(30),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 15,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.history_outlined,
+                          size: 48,
+                          color: Colors.grey[300],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No Recent History',
+                          style: TextStyle(
+                            color: Colors.grey[500],
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Booking history will appear when the backend is initialized.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.grey[400],
-                      fontSize: 12,
-                      fontWeight: FontWeight.w400,
+                );
+              }
+
+              return Column(
+                children: recentBookings.map((booking) {
+                  return Padding(
+                    padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8),
+                    child: GestureDetector(
+                      onTap: () => _navigateToTicket(booking),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.03),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF6F6F6),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(Icons.directions_car, color: Color(0xFF01102B), size: 20),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  FutureBuilder<Map<String, dynamic>?>(
+                                    future: MockDatabase.instance.from('vehicles').select('brand_name, car_model').eq('id', booking['vehicle_id'] ?? '').maybeSingle().build<Map<String, dynamic>?>(),
+                                    builder: (context, vSnap) {
+                                      final car = vSnap.data;
+                                      return Text(
+                                        car != null ? "${car['brand_name']} ${car['car_model']}" : "Car Details",
+                                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                                      );
+                                    }
+                                  ),
+                                  Text(
+                                    DateFormat('d MMM yyyy').format(DateTime.parse(booking['scheduled_at'])),
+                                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  "Rs. ${booking['final_amount']}",
+                                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF01102B)),
+                                ),
+                                Text(
+                                  booking['status'].toString().toUpperCase(),
+                                  style: TextStyle(
+                                    color: booking['status'].toString().toUpperCase() == 'COMPLETED' ? Colors.green : Colors.red,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ),
+                  );
+                }).toList(),
+              );
+            }
           ),
           const SizedBox(height: 100),
         ],
@@ -937,11 +1063,74 @@ class _HomeContentState extends State<HomeContent> {
     );
   }
 
+  Future<void> _navigateToTicket(Map<String, dynamic> booking) async {
+    // 1. Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.white)),
+    );
+
+    try {
+      // 2. Fetch all related data
+      final vehicle = await MockDatabase.instance.from('vehicles').select().eq('id', booking['vehicle_id']).maybeSingle().build<Map<String, dynamic>?>();
+      final address = await MockDatabase.instance.from('addresses').select().eq('user_id', booking['user_id']).limit(1).maybeSingle().build<Map<String, dynamic>?>();
+      
+      Map<String, dynamic>? worker;
+      if (booking['worker_id'] != null) {
+        final workerRec = await MockDatabase.instance.from('workers').select('user_id').eq('id', booking['worker_id']).maybeSingle().build<Map<String, dynamic>?>();
+        if (workerRec != null) {
+          worker = await MockDatabase.instance.from('users').select().eq('id', workerRec['user_id']).maybeSingle().build<Map<String, dynamic>?>();
+        }
+      }
+
+      // 3. Map services back to names (simulated mapping)
+      final List<String> serviceNames = (booking['service_id'] as List).map((id) {
+        // Deterministic reverse mapping for mock
+        if (id.toString().contains('b')) return 'Exterior Wash';
+        if (id.toString().contains('c')) return 'Interior Cleaning';
+        return 'Full Car Wash';
+      }).toList();
+
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ETicketPage(
+            bookingId: booking['id'],
+            qrToken: booking['qr_token'],
+            vehicle: {
+              'type': vehicle?['vehicle_type'] ?? 'Car',
+              'brand': vehicle?['brand_name'] ?? 'Car',
+              'model': vehicle?['car_model'] ?? 'N/A',
+              'license': vehicle?['license'] ?? 'N/A',
+            },
+            selectedServices: serviceNames,
+            selectedDate: DateTime.parse(booking['scheduled_at']),
+            selectedTime: DateFormat('h:mm a').format(DateTime.parse(booking['scheduled_at'])),
+            addressLabel: 'Service Location',
+            addressText: address != null ? "${address['house_no']} ${address['street']}, ${address['city']}" : "N/A",
+            totalPrice: (booking['final_amount'] ?? 0).toDouble(),
+            worker: worker,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
+    }
+  }
+
   Future<void> _showCancelDialog(String bookingId) async {
+    final messenger = ScaffoldMessenger.of(context);
     return showDialog(
       context: context,
       builder:
-          (context) => AlertDialog(
+          (dialogContext) => AlertDialog(
             title: const Text("Cancel Order?"),
             content: const Text(
               "Are you sure you want to cancel this order? This action cannot be undone.",
@@ -951,7 +1140,7 @@ class _HomeContentState extends State<HomeContent> {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(dialogContext),
                 child: const Text(
                   "No, Keep it",
                   style: TextStyle(color: Colors.grey),
@@ -959,30 +1148,29 @@ class _HomeContentState extends State<HomeContent> {
               ),
               TextButton(
                 onPressed: () async {
-                  Navigator.pop(context); // Close dialog
+                  Navigator.pop(dialogContext); // Close dialog
                   // Show loading
                   setState(() => _isLoading = true);
                   try {
                     await MockDatabase.instance.client
                         .from('bookings')
-                        .update({'status': 'Cancelled'})
+                        .update({'status': 'CANCELLED'})
                         .eq('id', bookingId)
                         .build<void>();
 
                     if (mounted) {
                       setState(() => _isLoading = false);
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      messenger.showSnackBar(
                         const SnackBar(
                           content: Text("Order cancelled successfully"),
                           backgroundColor: Colors.green,
                         ),
                       );
-                      // StreamBuilder will auto-update
                     }
                   } catch (e) {
                     if (mounted) {
                       setState(() => _isLoading = false);
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      messenger.showSnackBar(
                         SnackBar(
                           content: Text("Error cancelling order: $e"),
                           backgroundColor: Colors.red,

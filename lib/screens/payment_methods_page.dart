@@ -45,24 +45,102 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
     }
 
     try {
-      await MockDatabase.instance.from('bookings').insert({
+      // 1. Fetch all 'APPROVED' workers from the workers table
+      final List<Map<String, dynamic>> approvedWorkers = await MockDatabase.instance.client
+          .from('workers')
+          .select('id, user_id')
+          .eq('status', 'APPROVED')
+          .build<List<Map<String, dynamic>>>();
+
+      if (approvedWorkers.isEmpty) {
+        throw Exception("No approved workers are currently on duty. Our team is expanding!");
+      }
+
+      // 2. Find an approved worker who is NOT busy at the selected time
+      Map<String, dynamic>? assignedWorkerData;
+      String? assignedWorkerId;
+      final selectedIso = widget.selectedDate.toUtc().toIso8601String().split('T')[0];
+      
+      for (var worker in approvedWorkers) {
+        final String workerTableId = worker['id']; // This is what bookings.worker_id references
+        final String userId = worker['user_id'];
+
+        // Check if this worker has any bookings on the selected day
+        final busyBookings = await MockDatabase.instance.client
+            .from('bookings')
+            .select('id')
+            .eq('worker_id', workerTableId)
+            .build<List<Map<String, dynamic>>>();
+        
+        bool isBusy = busyBookings.any((b) {
+          final bDate = b['scheduled_at']?.toString().split('T')[0];
+          return bDate == selectedIso;
+        });
+
+        if (!isBusy) {
+          // Worker is free! Now get their user details (name, etc.)
+          final userDetails = await MockDatabase.instance.client
+              .from('users')
+              .select()
+              .eq('id', userId)
+              .maybeSingle()
+              .build<Map<String, dynamic>?>();
+          
+          if (userDetails != null) {
+            assignedWorkerData = userDetails;
+            assignedWorkerId = workerTableId;
+            break;
+          }
+        }
+      }
+
+      // Fallback: If everyone is busy, we follow the previous instruction and pick the first approved worker anyway
+      if (assignedWorkerId == null && approvedWorkers.isNotEmpty) {
+        final fallbackWorker = approvedWorkers.first;
+        final userDetails = await MockDatabase.instance.client
+            .from('users')
+            .select()
+            .eq('id', fallbackWorker['user_id'])
+            .maybeSingle()
+            .build<Map<String, dynamic>?>();
+        
+        if (userDetails != null) {
+          assignedWorkerData = userDetails;
+          assignedWorkerId = fallbackWorker['id'];
+        }
+      }
+
+      if (assignedWorkerId == null || assignedWorkerData == null) {
+        throw Exception("Unable to find an available approved worker right now.");
+      }
+
+      // 3. Create the booking with the designated worker_id
+      // Mock mapping of service names to UUIDs for the service_id array
+      final List<String> serviceUuids = widget.selectedServices.map((name) {
+        return '00000000-0000-0000-0000-${name.length.toRadixString(16).padLeft(12, '0')}';
+      }).toList();
+
+      final response = await MockDatabase.instance.client.from('bookings').insert({
         'user_id': user['id'],
-        'service_names': widget.selectedServices,
-        'total_price': widget.totalPrice,
-        'booking_date': widget.selectedDate.toIso8601String().split('T')[0],
-        'booking_time': widget.selectedTime,
-        'vehicle_type': widget.vehicle['type'],
-        'vehicle_brand': widget.vehicle['brand'],
-        'vehicle_name': widget.vehicle['name'],
-        'address_label': widget.addressLabel,
-        'address_text': widget.addressText,
-        'status': 'pending',
-        'payment_method': _selectedMethod,
-      }).build<void>();
+        'service_id': serviceUuids,
+        'vehicle_id': widget.vehicle['id'],
+        'worker_id': assignedWorkerId,
+        'booking_type': 'SCHEDULED',
+        'scheduled_at': widget.selectedDate.toUtc().toIso8601String(),
+        'service_start': widget.selectedDate.toUtc().toIso8601String(), 
+        'service_end': widget.selectedDate.add(const Duration(hours: 1)).toUtc().toIso8601String(), 
+        'status': 'ASSIGNED',
+        'base_amount': widget.totalPrice,
+        'discount_amount': 0.0,
+        'final_amount': widget.totalPrice + 199 + 20,
+        'qr_token': 'QR-${DateTime.now().millisecondsSinceEpoch}',
+        'latitude': 0.0,
+        'longitude': 0.0,
+      }).select().single().build<Map<String, dynamic>>();
 
       if (mounted) {
         setState(() => _isSaving = false);
-        _showSuccessDialog();
+        _showSuccessDialog(assignedWorkerData, response['id']?.toString(), response['qr_token']?.toString());
       }
     } catch (e) {
       if (mounted) {
@@ -78,7 +156,7 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
     }
   }
 
-  void _showSuccessDialog() {
+  void _showSuccessDialog(Map<String, dynamic> worker, String? bookingId, String? qrToken) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -116,7 +194,7 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    "Your order for the Carwash has received, The Worker will arrive at 10:00AM.",
+                    "Your order for the Carwash has been received. Our worker ${worker['name']} will arrive at ${widget.selectedTime}.",
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,
@@ -135,16 +213,19 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder:
-                                (context) => ETicketPage(
-                                  vehicle: widget.vehicle,
-                                  selectedServices: widget.selectedServices,
-                                  selectedDate: widget.selectedDate,
-                                  selectedTime: widget.selectedTime,
-                                  addressLabel: widget.addressLabel,
-                                  addressText: widget.addressText,
-                                  totalPrice: widget.totalPrice,
-                                ),
+                                builder:
+                                    (context) => ETicketPage(
+                                      bookingId: bookingId,
+                                      qrToken: qrToken,
+                                      vehicle: widget.vehicle,
+                                      selectedServices: widget.selectedServices,
+                                      selectedDate: widget.selectedDate,
+                                      selectedTime: widget.selectedTime,
+                                      addressLabel: widget.addressLabel,
+                                      addressText: widget.addressText,
+                                      totalPrice: widget.totalPrice,
+                                      worker: worker,
+                                    ),
                           ),
                         );
                       },

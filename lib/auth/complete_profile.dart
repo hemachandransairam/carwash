@@ -63,7 +63,8 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
         'name': name,
         'phone': '$_selectedCountryCode${_phoneController.text.trim()}',
         'gender': _selectedGender,
-        'created_at': DateTime.now().toIso8601String(),
+        'role': 'USER',
+        'created_at': DateTime.now().toUtc().toIso8601String(),
       }).select().maybeSingle().build<Map<String, dynamic>?>();
 
       if (result != null) {

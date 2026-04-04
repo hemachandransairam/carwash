@@ -46,6 +46,11 @@ dependencies:
   signals_flutter: ^6.3.0
   awesome_snackbar_content: ^0.1.1
   supabase_flutter: ^2.8.2
+  gal: ^2.3.2
+  http: ^1.6.0
+  path_provider: ^2.1.5
+  pdf: ^3.11.3
+  printing: ^5.14.3
 
 dev_dependencies:
   flutter_test:

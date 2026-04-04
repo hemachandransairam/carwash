@@ -57,7 +57,7 @@ class _ManageAddressPageState extends State<ManageAddressPage> {
     }
   }
 
-  Future<void> _deleteAddress(int id) async {
+  Future<void> _deleteAddress(String id) async {
     await MockDatabase.instance.from('user_addresses').delete().eq('id', id).build<void>();
     _fetchAddresses();
   }

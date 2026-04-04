@@ -19,6 +19,8 @@ class MockDatabase {
       'user_addresses': 'addresses',
       'personal_details': 'users',
       'user_vehicles': 'vehicles',
+      'vehicle_services': 'booking_vehicle_services',
+      'user_payments': 'payments',
     };
     
     final targetTable = tableMap[table] ?? table;
@@ -84,22 +86,40 @@ class MockAuth {
     return d.length == 10 ? '91$d' : d;
   }
 
+  Future<bool> checkPhone(String phone) async {
+    final String cleanPhone = _normalizePhone(phone);
+    final res = await http.post(
+      Uri.parse('${SupabaseConfig.url}/functions/v1/check-phone'),
+      headers: {
+        'Content-Type': 'application/json', 
+        'apikey': SupabaseConfig.anonKey,
+        'Authorization': 'Bearer ${SupabaseConfig.anonKey}',
+      },
+      body: jsonEncode({'phone': cleanPhone}),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) return false;
+    final data = jsonDecode(res.body);
+    return data['exists'] == true;
+  }
+
   /// DIRECT META WhatsApp API FLOW (To Debug the Error)
   Future<void> signInWithOtp({required String phone}) async {
     final String cleanPhone = _normalizePhone(phone);
     final String generatedOtp = (100000 + (999999 - 100000) * (DateTime.now().millisecond / 1000)).floor().toString();
 
     // 1. Save to Supabase otp_store directly
-    await Supabase.instance.client.from('otp_store').upsert({
-      'phone': cleanPhone,
-      'otp': generatedOtp,
-      'expires_at': DateTime.now().add(const Duration(minutes: 5)).toIso8601String(),
-    }).build();
-
-    print("--- DIRECT SENDING TO WHATSAPP ---");
     final String token = "EAANF8ZCkAkSMBQ7fXCC1HM6oW0XIuChDlECEAXZB4az6JqpdiEXZBGCrbdK1lgHJtUw8qTZBeF1HeudHlF0qKZBPnTXBpsQWARZBcOowVccujNWT7kgpSkQkONpeMGZAAWjPLeSu6DOhFQomcTAaKQWg34qaSf5PJMONg27wqewcZC9tSczIMPg8DvykReGg9kkTZA67mLZBC4lDRnMA738KHIpUZAgCuiFZACZCBSp4xKZAda";
     final String phoneId = "1069501402909893";
 
+    await Supabase.instance.client.from('otp_store').upsert({
+      'phone': cleanPhone,
+      'otp': generatedOtp,
+      'expires_at': DateTime.now().toUtc().add(const Duration(minutes: 5)).toIso8601String(),
+    }).build();
+
+    print("--- DIRECT SENDING TO WHATSAPP to $cleanPhone ---");
+    print("TOKEN START: ${token.substring(0, 10)}...");
+    
     final response = await http.post(
       Uri.parse("https://graph.facebook.com/v17.0/$phoneId/messages"),
       headers: {
@@ -112,7 +132,7 @@ class MockAuth {
         "type": "template",
         "template": {
           "name": "otp_verification",
-          "language": {"code": "en_US"},
+          "language": {"code": "en_GB"},
           "components": [
             {
               "type": "body",
@@ -168,10 +188,16 @@ class MockAuth {
       );
       
       if (loginRes.statusCode < 200 || loginRes.statusCode >= 300) {
-        throw Exception("Invalid OTP");
+        throw Exception(loginRes.body.isNotEmpty ? loginRes.body : "Invalid OTP");
       }
       
       final data = jsonDecode(loginRes.body);
+      
+      // Ensure only USERs can log into this app
+      final String userRole = data['role']?.toString().toUpperCase() ?? 'USER';
+      if (userRole != 'USER') {
+        throw Exception("This account is not a customer account. Please use the relevant app.");
+      }
       
       // Try to fetch full profile from DB
       final profile = await Supabase.instance.client
@@ -181,9 +207,14 @@ class MockAuth {
           .maybeSingle();
 
       if (profile != null) {
-        _sessionUser = profile;
+        _sessionUser = {...profile, 'role': userRole};
       } else {
-        _sessionUser = {'id': data['user_id'], 'phone': cleanPhone, 'is_new': false};
+        _sessionUser = {
+          'id': data['user_id'], 
+          'phone': cleanPhone, 
+          'is_new': false, 
+          'role': userRole
+        };
       }
     } else {
       // New User: Register stub account to verify OTP
@@ -200,16 +231,21 @@ class MockAuth {
           'mode': 'register',
           'name': '',
           'email': '',
-          'role': 'CUSTOMER'
+          'role': 'USER'
         }),
       );
       
       if (regRes.statusCode < 200 || regRes.statusCode >= 300) {
-        throw Exception("Invalid OTP");
+        throw Exception(regRes.body.isNotEmpty ? regRes.body : "Invalid OTP");
       }
       
       final data = jsonDecode(regRes.body);
-      _sessionUser = {'id': data['user_id'], 'phone': phone, 'is_new': true};
+      _sessionUser = {
+        'id': data['user_id'], 
+        'phone': cleanPhone, 
+        'is_new': true, 
+        'role': data['role'] ?? 'USER'
+      };
     }
     
     _saveSession();

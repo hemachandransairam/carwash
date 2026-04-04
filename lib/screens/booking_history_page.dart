@@ -57,32 +57,33 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
 
                     final ongoing =
                         bookings.where((b) {
-                          final s = (b['status'] ?? '').toLowerCase();
+                          final s = (b['status'] ?? '').toUpperCase();
                           return [
-                            'pending',
-                            'confirmed',
-                            'accepted',
-                            'in_progress',
-                            'arrived',
+                            'PENDING',
+                            'CONFIRMED',
+                            'ACCEPTED',
+                            'IN_PROGRESS',
+                            'ARRIVED',
+                            'ASSIGNED',
                           ].contains(s);
                         }).toList();
 
                     final unpaid =
                         bookings.where((b) {
-                          final s = (b['status'] ?? '').toLowerCase();
+                          final s = (b['status'] ?? '').toUpperCase();
                           return [
-                            'payment_pending',
-                            'work_completed',
+                            'PAYMENT_PENDING',
+                            'WORK_COMPLETED',
                           ].contains(s);
                         }).toList();
 
                     final completed =
                         bookings.where((b) {
-                          final s = (b['status'] ?? '').toLowerCase();
+                          final s = (b['status'] ?? '').toUpperCase();
                           return [
-                            'completed',
-                            'cancelled',
-                            'rejected',
+                            'COMPLETED',
+                            'CANCELLED',
+                            'REJECTED',
                           ].contains(s);
                         }).toList();
 
@@ -425,7 +426,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
     try {
       await MockDatabase.instance
           .from('bookings')
-          .update({'status': 'cancelled'})
+          .update({'status': 'CANCELLED'})
           .eq('id', bookingId)
           .build();
 
@@ -443,19 +444,20 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
   }
 
   Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'completed':
+    switch (status.toUpperCase()) {
+      case 'COMPLETED':
         return Colors.green;
-      case 'confirmed':
-      case 'accepted':
-      case 'in_progress':
-      case 'payment_pending':
-      case 'work_completed':
+      case 'CONFIRMED':
+      case 'ACCEPTED':
+      case 'IN_PROGRESS':
+      case 'PAYMENT_PENDING':
+      case 'WORK_COMPLETED':
+      case 'ASSIGNED':
         return const Color(0xFF01102B);
-      case 'cancelled':
-      case 'rejected':
+      case 'CANCELLED':
+      case 'REJECTED':
         return Colors.red;
-      case 'pending':
+      case 'PENDING':
         return Colors.orange;
       default:
         return const Color(0xFF01102B);

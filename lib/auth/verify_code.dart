@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/services/auth_service.dart';
@@ -56,12 +57,16 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
         }
       } else {
         // Login existing user
-        await AuthService().login(widget.phoneNumber, otp);
+        final user = await AuthService().login(widget.phoneNumber, otp);
         
         if (mounted) {
+          final isProfileComplete = user['name'] != null && user['name'].toString().isNotEmpty;
+          
           Navigator.pushAndRemoveUntil(
             context,
-            MaterialPageRoute(builder: (context) => const HomeScreen()),
+            MaterialPageRoute(
+              builder: (context) => isProfileComplete ? const HomeScreen() : const CompleteProfilePage(),
+            ),
             (route) => false,
           );
         }
@@ -69,6 +74,12 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
     } catch (e) {
       if (mounted) {
         String msg = e.toString().replaceFirst('Exception: ', '');
+        if (msg.startsWith('{')) {
+          try {
+            final decoded = jsonDecode(msg) as Map<String, dynamic>;
+            msg = decoded['error']?.toString() ?? msg;
+          } catch (_) {}
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Invalid OTP: $msg"), backgroundColor: Colors.redAccent),
         );

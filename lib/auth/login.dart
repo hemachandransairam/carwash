@@ -75,9 +75,11 @@ class _LoginPageState extends State<LoginPage> {
           msg = decoded['error']?.toString() ?? msg;
         } catch (_) {}
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg), backgroundColor: Colors.redAccent),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: Colors.redAccent),
+        );
+      }
     }
   }
 

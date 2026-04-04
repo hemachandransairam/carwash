@@ -185,10 +185,10 @@ class BookingSummaryPage extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            vehicle['model'] != null &&
-                                    vehicle['model']!.isNotEmpty
-                                ? vehicle['model']!
-                                : "${vehicle['brand']} ${vehicle['name']}",
+                            vehicle['car_model'] != null &&
+                                    vehicle['car_model']!.isNotEmpty
+                                ? vehicle['car_model']!
+                                : "${vehicle['brand_name']} Vehicle",
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
@@ -197,11 +197,11 @@ class BookingSummaryPage extends StatelessWidget {
                           ),
                           Text(
                             [
-                              vehicle['brand'],
-                              vehicle['type'],
-                              if (vehicle['license_number'] != null &&
-                                  vehicle['license_number']!.isNotEmpty)
-                                "•••• ${vehicle['license_number']!.substring(vehicle['license_number']!.length > 4 ? vehicle['license_number']!.length - 4 : 0)}",
+                              vehicle['brand_name'],
+                              vehicle['vehicle_type'],
+                              if (vehicle['license'] != null &&
+                                  vehicle['license']!.isNotEmpty)
+                                "•••• ${vehicle['license']!.substring(vehicle['license']!.length > 4 ? vehicle['license']!.length - 4 : 0)}",
                             ].where((e) => e != null && e.isNotEmpty).join(" • "),
                             style: TextStyle(
                               fontSize: 13,

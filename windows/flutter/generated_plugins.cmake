@@ -4,8 +4,10 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links
+  gal
   geolocator_windows
   permission_handler_windows
+  printing
   url_launcher_windows
 )
 

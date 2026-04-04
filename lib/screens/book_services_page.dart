@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../auth/complete_profile.dart';
 import '../core/services/mock_database.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
@@ -20,9 +21,9 @@ class _BookServicesPageState extends State<BookServicesPage> {
   // Vehicle selection
   String? _selectedVehicleType;
   String? _selectedVehicleBrand;
-  String? _selectedVehicleName;
   String? _selectedVehicleModel;
   String? _selectedVehicleLicense;
+  String? _selectedVehicleId;
   List<Map<String, dynamic>> _savedVehicles = [];
   bool _isLoadingVehicles = true;
 
@@ -33,18 +34,20 @@ class _BookServicesPageState extends State<BookServicesPage> {
 
   // Services selection
   final Set<String> _selectedServices = {};
-  final List<Map<String, dynamic>> _availableServices = [
-    {"name": "Exterior Cleaning", "icon": Icons.local_car_wash, "price": 299},
-    {"name": "Vacuum Cleaning", "icon": Icons.cleaning_services, "price": 199},
-    {
-      "name": "Interior Cleaning",
-      "icon": Icons.airline_seat_recline_extra,
-      "price": 399,
-    },
-    {"name": "Engine Bay Cleaning", "icon": Icons.engineering, "price": 150},
-    {"name": "Car Polish Cleaning", "icon": Icons.auto_fix_high, "price": 499},
-    {"name": "Tire Cleaning", "icon": Icons.tire_repair, "price": 99},
-  ];
+  List<Map<String, dynamic>> _availableServices = [];
+  bool _isLoadingServices = true;
+
+  IconData _getIconForService(String name) {
+    final lower = name.toLowerCase();
+    if (lower.contains('exterior')) return Icons.local_car_wash;
+    if (lower.contains('vacuum')) return Icons.cleaning_services;
+    if (lower.contains('interior')) return Icons.airline_seat_recline_extra;
+    if (lower.contains('engine')) return Icons.engineering;
+    if (lower.contains('polish')) return Icons.auto_fix_high;
+    if (lower.contains('tire')) return Icons.tire_repair;
+    if (lower.contains('wax')) return Icons.auto_fix_normal;
+    return Icons.settings_suggest;
+  }
 
   double get _totalPrice {
     double total = 0;
@@ -65,8 +68,50 @@ class _BookServicesPageState extends State<BookServicesPage> {
   @override
   void initState() {
     super.initState();
+    _checkProfileCompleteness();
     _fetchVehicles();
     _fetchAddresses();
+    _fetchServices();
+  }
+
+  Future<void> _fetchServices() async {
+    try {
+      final data = await MockDatabase.instance
+          .from('services')
+          .select()
+          .eq('is_active', true)
+          .order('name')
+          .build<List<Map<String, dynamic>>>();
+      
+      setState(() {
+        _availableServices = data.map((s) => {
+          ...s,
+          'price': (s['base_price'] as num).toDouble(), // Map base_price to price for logic consistency
+          'icon': _getIconForService(s['name']),
+        }).toList();
+        _isLoadingServices = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingServices = false);
+    }
+  }
+
+  void _checkProfileCompleteness() {
+    final user = MockDatabase.instance.auth.currentUser;
+    if (user != null) {
+      final name = user['name']?.toString() ?? '';
+      if (name.isEmpty) {
+        // If profile is incomplete, redirect to complete it
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const CompleteProfilePage()),
+            );
+          }
+        });
+      }
+    }
   }
 
   Future<void> _fetchVehicles() async {
@@ -78,16 +123,29 @@ class _BookServicesPageState extends State<BookServicesPage> {
             .select()
             .eq('user_id', user['id'])
             .build();
-        setState(() {
-          _savedVehicles = List<Map<String, dynamic>>.from(data);
-          _isLoadingVehicles = false;
-        });
+        if (mounted) {
+          setState(() {
+            _savedVehicles = List<Map<String, dynamic>>.from(data);
+            _isLoadingVehicles = false;
+          });
+        }
       } catch (e) {
-        setState(() => _isLoadingVehicles = false);
+        if (mounted) setState(() => _isLoadingVehicles = false);
       }
     } else {
-      setState(() => _isLoadingVehicles = false);
+      if (mounted) setState(() => _isLoadingVehicles = false);
     }
+  }
+
+  String _formatAddress(Map<String, dynamic> addr) {
+    final parts = [
+      addr['house_no'],
+      addr['street'],
+      addr['landmark'] != null && addr['landmark'].isNotEmpty ? 'Near ${addr['landmark']}' : null,
+      addr['city'],
+      addr['pincode'],
+    ].where((e) => e != null && e.toString().isNotEmpty);
+    return parts.isEmpty ? "No address details" : parts.join(", ");
   }
 
   Future<void> _fetchAddresses() async {
@@ -99,15 +157,23 @@ class _BookServicesPageState extends State<BookServicesPage> {
             .select()
             .eq('user_id', user['id'])
             .build();
-        setState(() {
-          _savedAddresses = List<Map<String, dynamic>>.from(data);
-          _isLoadingAddresses = false;
-        });
+        if (mounted) {
+          setState(() {
+            _savedAddresses = List<Map<String, dynamic>>.from(data);
+            _isLoadingAddresses = false;
+            // Set default address if exists
+            if (_savedAddresses.isNotEmpty && _addressController.text.isEmpty) {
+              final def = _savedAddresses.firstWhere((a) => a['is_default'] == true, orElse: () => _savedAddresses.first);
+              _addressController.text = _formatAddress(def);
+              _addressLabel = def['address_type'] ?? "Saved";
+            }
+          });
+        }
       } catch (e) {
-        setState(() => _isLoadingAddresses = false);
+        if (mounted) setState(() => _isLoadingAddresses = false);
       }
     } else {
-      setState(() => _isLoadingAddresses = false);
+      if (mounted) setState(() => _isLoadingAddresses = false);
     }
   }
 
@@ -138,11 +204,11 @@ class _BookServicesPageState extends State<BookServicesPage> {
                   addressText: _addressController.text,
                   addressLabel: _addressLabel ?? "Selected Address",
                   vehicle: {
-                    'type': _selectedVehicleType!,
-                    'name': _selectedVehicleName ?? '',
-                    'brand': _selectedVehicleBrand ?? '',
-                    'model': _selectedVehicleModel ?? '',
-                    'license_number': _selectedVehicleLicense ?? '',
+                    'id': _selectedVehicleId ?? '',
+                    'vehicle_type': _selectedVehicleType!,
+                    'brand_name': _selectedVehicleBrand ?? '',
+                    'car_model': _selectedVehicleModel ?? '',
+                    'license': _selectedVehicleLicense ?? '',
                   },
                 ),
           ),
@@ -388,9 +454,9 @@ class _BookServicesPageState extends State<BookServicesPage> {
               return GestureDetector(
                 onTap: () {
                   setState(() {
+                    _selectedVehicleId = vehicle['id'];
                     _selectedVehicleType = vehicle['vehicle_type'];
                     _selectedVehicleBrand = vehicle['brand_name'];
-                    _selectedVehicleName = vehicle['name'] ?? vehicle['car_model'];
                     _selectedVehicleModel = vehicle['car_model'];
                     _selectedVehicleLicense = vehicle['license'];
                     // Automatically move to next step
@@ -550,13 +616,12 @@ class _BookServicesPageState extends State<BookServicesPage> {
                   if (result is Map<String, dynamic>) {
                     // Result from select screen might be dynamic map
                     setState(() {
-                      _selectedVehicleType = result['carType'];
-                      _selectedVehicleBrand = result['brand'];
-                      _selectedVehicleName = result['name'];
-                      _selectedVehicleModel =
-                          result['model']; // From select screen
-                      _selectedVehicleLicense =
-                          result['license_number']; // From select screen
+                      _selectedVehicleId = result['id']; // ID from insert result
+                      _selectedVehicleId = result['id'];
+                      _selectedVehicleType = result['vehicle_type'];
+                      _selectedVehicleBrand = result['brand_name'];
+                      _selectedVehicleModel = result['car_model'];
+                      _selectedVehicleLicense = result['license'];
                       // Automatically move to next step
                       _currentStep = 1;
                     });
@@ -596,45 +661,48 @@ class _BookServicesPageState extends State<BookServicesPage> {
   }
 
   Widget _buildServicesSelection() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            "Choose Services",
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF01102B),
+    return _isLoadingServices
+        ? const Center(child: CircularProgressIndicator(color: Color(0xFF01102B)))
+        : SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Choose Services",
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF01102B),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  "Select the services you want for your vehicle",
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+                const SizedBox(height: 24),
+                if (_availableServices.isEmpty)
+                  const Center(child: Text("No services available right now")),
+                ..._availableServices.map((s) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: buildServiceTile(
+                      title: s['name'],
+                      icon: s['icon'],
+                      price: s['price'].toDouble(),
+                      isSelected: _selectedServices.contains(s['name']),
+                      onTap: () => setState(() {
+                        _selectedServices.contains(s['name'])
+                            ? _selectedServices.remove(s['name'])
+                            : _selectedServices.add(s['name']);
+                      }),
+                    ),
+                  );
+                }),
+              ],
             ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            "Select the services you want for your vehicle",
-            style: TextStyle(fontSize: 14, color: Colors.grey),
-          ),
-          const SizedBox(height: 24),
-          ..._availableServices.map((s) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: buildServiceTile(
-                title: s['name'],
-                icon: s['icon'],
-                price: s['price'].toDouble(),
-                isSelected: _selectedServices.contains(s['name']),
-                onTap:
-                    () => setState(() {
-                      _selectedServices.contains(s['name'])
-                          ? _selectedServices.remove(s['name'])
-                          : _selectedServices.add(s['name']);
-                    }),
-              ),
-            );
-          }),
-        ],
-      ),
-    );
+          );
   }
 
   Widget _buildTimeSelection() {
@@ -981,7 +1049,7 @@ class _BookServicesPageState extends State<BookServicesPage> {
                   .take(4);
             },
             displayStringForOption:
-                (Map<String, dynamic> option) => option['address'],
+                (Map<String, dynamic> option) => _formatAddress(option),
             fieldViewBuilder: (
               context,
               controller,
@@ -1047,16 +1115,16 @@ class _BookServicesPageState extends State<BookServicesPage> {
                             size: 20,
                             color: Colors.grey,
                           ),
-                          title: Text(option['label'] ?? 'Address'),
+                          title: Text(option['address_type'] ?? 'Address'),
                           subtitle: Text(
-                            option['address'],
+                            _formatAddress(option),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           onTap: () {
                             onSelected(option);
                             setState(() {
-                              _addressLabel = option['label'];
+                              _addressLabel = option['address_type'];
                             });
                           },
                         );
@@ -1104,12 +1172,17 @@ class _BookServicesPageState extends State<BookServicesPage> {
                     if (label != null) {
                       final user = MockDatabase.instance.auth.currentUser;
                       if (user != null) {
+                        // For simplicity, we just save the current text as street if manually typed
+                        // Ideally we show the refinement sheet, but let's just insert a flat record for now
                         await MockDatabase.instance.client
                             .from('addresses')
                             .insert({
                               'user_id': user['id'],
-                              'label': label,
-                              'address': _addressController.text,
+                              'address_type': label,
+                              'street': _addressController.text,
+                              'city': 'Unknown',
+                              'state': 'Unknown',
+                              'pincode': '000000',
                             })
                             .build<void>();
                         await _fetchAddresses();

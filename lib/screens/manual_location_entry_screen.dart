@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'dart:async';
 import 'dart:convert';
 import 'notification_permission_screen.dart';
+import '../core/services/mock_database.dart';
 
 class ManualLocationEntryScreen extends StatefulWidget {
   const ManualLocationEntryScreen({super.key});
@@ -87,15 +88,68 @@ class _ManualLocationEntryScreenState extends State<ManualLocationEntryScreen> {
     });
   }
 
-  void _setAsHome(String location, String address) {
-    // Here you would save the location and navigate to the next screen
-    // Navigate to Notification Permission Screen
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const NotificationPermissionScreen(),
+  void _setAsHome(String name, String addressText) {
+    // Show a dialog to refine the address (house no, landmark, etc)
+    final Map<String, String> parts = _parseAddress(addressText);
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _AddressRefinementSheet(
+        initialName: name,
+        initialCity: parts['city'] ?? '',
+        initialState: parts['state'] ?? '',
+        onSave: (details) async {
+          final user = MockDatabase.instance.auth.currentUser;
+          if (user == null) return;
+
+          setState(() => _isLoading = true);
+          try {
+            await MockDatabase.instance.from('addresses').upsert({
+              'user_id': user['id'],
+              'house_no': details['house_no'],
+              'street': details['street'] ?? name,
+              'landmark': details['landmark'],
+              'city': details['city'] ?? 'Unknown',
+              'state': details['state'] ?? 'Unknown',
+              'pincode': details['pincode'] ?? '000000',
+              'address_type': 'Home',
+              'is_default': true,
+              'latitude': 0, // Mock lat/lng for now
+              'longitude': 0,
+            }).build();
+
+            if (mounted) {
+              Navigator.pop(context); // Close sheet
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const NotificationPermissionScreen(),
+                ),
+              );
+            }
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+            }
+          } finally {
+            if (mounted) setState(() => _isLoading = false);
+          }
+        },
       ),
     );
+  }
+
+  Map<String, String> _parseAddress(String address) {
+    final parts = address.split(',').map((e) => e.trim()).toList();
+    if (parts.length >= 2) {
+      return {
+        'city': parts[parts.length - 2],
+        'state': parts[parts.length - 1],
+      };
+    }
+    return {};
   }
 
   @override
@@ -339,6 +393,108 @@ class _ManualLocationEntryScreenState extends State<ManualLocationEntryScreen> {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _AddressRefinementSheet extends StatefulWidget {
+  final String initialName;
+  final String initialCity;
+  final String initialState;
+  final Function(Map<String, String>) onSave;
+
+  const _AddressRefinementSheet({
+    required this.initialName,
+    required this.initialCity,
+    required this.initialState,
+    required this.onSave,
+  });
+
+  @override
+  State<_AddressRefinementSheet> createState() => _AddressRefinementSheetState();
+}
+
+class _AddressRefinementSheetState extends State<_AddressRefinementSheet> {
+  late TextEditingController _houseController;
+  late TextEditingController _landmarkController;
+  late TextEditingController _pincodeController;
+  late TextEditingController _streetController;
+
+  @override
+  void initState() {
+    super.initState();
+    _houseController = TextEditingController();
+    _landmarkController = TextEditingController();
+    _pincodeController = TextEditingController();
+    _streetController = TextEditingController(text: widget.initialName);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      ),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+        left: 20,
+        right: 20,
+        top: 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Refine your address',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 16),
+          _buildField('House / Flat / Block No.', _houseController),
+          const SizedBox(height: 12),
+          _buildField('Street / Area Name', _streetController),
+          const SizedBox(height: 12),
+          _buildField('Landmark (Optional)', _landmarkController),
+          const SizedBox(height: 12),
+          _buildField('Pincode', _pincodeController, isNum: true),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            height: 54,
+            child: ElevatedButton(
+              onPressed: () {
+                widget.onSave({
+                  'house_no': _houseController.text,
+                  'street': _streetController.text,
+                  'landmark': _landmarkController.text,
+                  'city': widget.initialCity,
+                  'state': widget.initialState,
+                  'pincode': _pincodeController.text,
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF01102B),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+              child: const Text('Save Address', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildField(String label, TextEditingController controller, {bool isNum = false}) {
+    return TextField(
+      controller: controller,
+      keyboardType: isNum ? TextInputType.number : TextInputType.text,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
     );
   }
