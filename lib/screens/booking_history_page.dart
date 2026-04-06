@@ -153,7 +153,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
     final date = DateTime.parse(booking['created_at']);
     final formattedDate = DateFormat('MMM dd, yyyy • hh:mm a').format(date);
     final status = booking['status'] ?? 'Pending';
-    final price = booking['total_price'] ?? 0;
+    final price = booking['final_amount'] ?? 0;
 
     return GestureDetector(
       onTap: () {
@@ -346,7 +346,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
   }
 
   Future<void> _cancelBooking(BuildContext context, dynamic bookingId) async {
-    // Find the booking to check scheduled time
+    // 1. Fetch booking to check timing/penalty
     final bookings = await MockDatabase.instance
         .from('bookings')
         .select()
@@ -359,9 +359,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
     final scheduledAt = DateTime.tryParse(booking['scheduled_at'] ?? '');
     final String status = (booking['status'] ?? '').toUpperCase();
     
-    // Determine penalty strings and behavior
     String warningMessage = "Are you sure you want to cancel this booking? Free cancellation applies.";
-    
     final bool isEnRoute = ['ASSIGNED', 'ARRIVED', 'IN_PROGRESS'].contains(status);
     
     if (isEnRoute) {
@@ -373,7 +371,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
       }
     }
 
-    // Confirmation dialog
+    // 2. Confirmation dialog (Penalty Warning)
     if (!context.mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -396,10 +394,85 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
 
     if (confirmed != true) return;
 
+    // 3. Reason dialog
+    if (!context.mounted) return;
+    String? selectedReason = await showDialog<String>(
+      context: context,
+      builder: (reasonContext) {
+        String? currentReason;
+        final TextEditingController otherController = TextEditingController();
+        bool showTextField = false;
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              title: const Text("Reason for Cancellation", style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF01102B))),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ...["Change of plans", "Found better price", "Worker late", "Scheduling conflict"].map((r) => 
+                      RadioListTile<String>(
+                        title: Text(r, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                        value: r,
+                        groupValue: currentReason,
+                        activeColor: const Color(0xFF01102B),
+                        onChanged: (val) => setState(() { currentReason = val; showTextField = false; }),
+                      )
+                    ),
+                    RadioListTile<String>(
+                      title: const Text("Other", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                      value: "Other",
+                      groupValue: currentReason,
+                      activeColor: const Color(0xFF01102B),
+                      onChanged: (val) => setState(() { currentReason = val; showTextField = true; }),
+                    ),
+                    if (showTextField)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: TextField(
+                          controller: otherController,
+                          decoration: const InputDecoration(
+                            hintText: "Enter reason...",
+                            border: UnderlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(reasonContext),
+                  child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+                ),
+                TextButton(
+                  onPressed: () {
+                    final reason = currentReason == "Other" ? otherController.text : currentReason;
+                    if (reason != null && reason.isNotEmpty) {
+                      Navigator.pop(reasonContext, reason);
+                    }
+                  },
+                  child: const Text("Submit", style: TextStyle(color: Color(0xFF01102B), fontWeight: FontWeight.w800)),
+                ),
+              ],
+            );
+          }
+        );
+      }
+    );
+
+    if (selectedReason == null) return;
+
+    // 4. Perform Update
     try {
       await MockDatabase.instance
           .from('bookings')
-          .update({'status': 'CANCELLED'})
+          .update({
+            'status': 'CANCELLED',
+            'cancellation_reason': selectedReason,
+          })
           .eq('id', bookingId)
           .build();
 

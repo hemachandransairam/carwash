@@ -106,7 +106,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
       value: value,
       onChanged: onChanged,
-      activeThumbColor: const Color(0xFF01102B),
+      activeTrackColor: const Color(0xFF01102B),
     );
   }
 

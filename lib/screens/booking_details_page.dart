@@ -253,6 +253,47 @@ class _BookingDetailsPageState extends State<BookingDetailsPage> {
                   // Each vehicle card now includes its own before/after photos
                   ..._vehicleDetails.map((v) => _buildVehicleCard(v)),
 
+                  if (status == 'CANCELLED' && widget.booking['cancellation_reason'] != null) ...[
+                    const SizedBox(height: 24),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withAlpha(12),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.red.withAlpha(25)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.info_outline, color: Colors.red, size: 20),
+                              SizedBox(width: 8),
+                              Text(
+                                "Cancellation Reason",
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.red,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            widget.booking['cancellation_reason'],
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[800],
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
                   const SizedBox(height: 32),
                   _buildPaymentDetails(),
                   const SizedBox(height: 40),
