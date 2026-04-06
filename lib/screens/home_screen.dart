@@ -43,7 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.08), // Increased opacity
+              color: Colors.black.withValues(alpha: 0.08), // Increased opacity
               blurRadius: 25, // Increased blur
               offset: const Offset(0, -5),
             ),
@@ -117,7 +117,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           BoxShadow(
                             color: const Color(
                               0xFF01102B,
-                            ).withOpacity(0.4), // Increased opacity
+                            ).withValues(alpha: 0.4), // Increased opacity
                             blurRadius: 12, // Increased blur
                             offset: const Offset(0, 6),
                           ),
@@ -653,7 +653,7 @@ class _HomeContentState extends State<HomeContent> {
                     borderRadius: BorderRadius.circular(16),
                   ),
                   elevation: 4,
-                  shadowColor: const Color(0xFF01102B).withOpacity(0.4),
+                  shadowColor: const Color(0xFF01102B).withValues(alpha: 0.4),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -717,7 +717,7 @@ class _HomeContentState extends State<HomeContent> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Active Orders',
+                      'Active Bookings',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
@@ -735,7 +735,7 @@ class _HomeContentState extends State<HomeContent> {
                         borderRadius: BorderRadius.circular(24),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.04),
+                            color: Colors.black.withValues(alpha: 0.04),
                             blurRadius: 15,
                             offset: const Offset(0, 8),
                           ),
@@ -928,7 +928,7 @@ class _HomeContentState extends State<HomeContent> {
                                         ),
                                       ),
                                       child: const Text(
-                                        "Cancel Order",
+                                        "Cancel Booking",
                                         style: TextStyle(
                                           fontWeight: FontWeight.bold,
                                         ),
@@ -980,7 +980,7 @@ class _HomeContentState extends State<HomeContent> {
                       borderRadius: BorderRadius.circular(24),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.04),
+                          color: Colors.black.withValues(alpha: 0.04),
                           blurRadius: 15,
                           offset: const Offset(0, 8),
                         ),
@@ -1023,7 +1023,7 @@ class _HomeContentState extends State<HomeContent> {
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.03),
+                              color: Colors.black.withValues(alpha: 0.03),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             ),
@@ -1204,9 +1204,9 @@ class _HomeContentState extends State<HomeContent> {
       context: context,
       builder:
           (dialogContext) => AlertDialog(
-            title: const Text("Cancel Order?"),
+            title: const Text("Cancel Booking?"),
             content: const Text(
-              "Are you sure you want to cancel this order? This action cannot be undone.",
+              "Are you sure you want to cancel this booking? This action cannot be undone.",
             ),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
@@ -1235,7 +1235,7 @@ class _HomeContentState extends State<HomeContent> {
                       setState(() => _isLoading = false);
                       messenger.showSnackBar(
                         const SnackBar(
-                          content: Text("Order cancelled successfully"),
+                          content: Text("Booking cancelled successfully"),
                           backgroundColor: Colors.green,
                         ),
                       );
@@ -1245,7 +1245,7 @@ class _HomeContentState extends State<HomeContent> {
                       setState(() => _isLoading = false);
                       messenger.showSnackBar(
                         SnackBar(
-                          content: Text("Error cancelling order: $e"),
+                          content: Text("Error cancelling booking: $e"),
                           backgroundColor: Colors.red,
                         ),
                       );

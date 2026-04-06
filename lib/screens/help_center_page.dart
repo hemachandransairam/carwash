@@ -19,7 +19,7 @@ class HelpCenterPage extends StatelessWidget {
             ),
             _buildFAQItem(
               "Can I cancel my booking?",
-              "Yes, you can cancel your booking from the 'History' tab or 'Active Orders' on the home screen if the status is pending or confirmed.",
+              "Yes, you can cancel your booking from the 'History' tab or 'Active Bookings' on the home screen, up to 2 hours before the scheduled time.",
             ),
             _buildFAQItem(
               "How do I add a new vehicle?",
@@ -29,7 +29,7 @@ class HelpCenterPage extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: const Color(0xFF01102B).withOpacity(0.05),
+                color: const Color(0xFF01102B).withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Column(
@@ -88,7 +88,7 @@ class HelpCenterPage extends StatelessWidget {
         border: Border.all(color: Colors.grey[200]!),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),

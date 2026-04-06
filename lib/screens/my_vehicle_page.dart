@@ -160,7 +160,9 @@ class _MyVehiclesPageState extends State<MyVehiclesPage> {
                                 title: Text(type),
                                 leading: Radio<String>(
                                   value: type,
+                                  // ignore: deprecated_member_use
                                   groupValue: selectedType,
+                                  // ignore: deprecated_member_use
                                   onChanged:
                                       (v) => setDialogState(
                                         () => selectedType = v,
@@ -194,7 +196,7 @@ class _MyVehiclesPageState extends State<MyVehiclesPage> {
                                       })
                                       .build<void>();
                                   _fetchVehicles();
-                                  if (mounted) Navigator.pop(context);
+                                  if (context.mounted) Navigator.pop(context);
                                 }
                               },
                     ),
@@ -234,7 +236,7 @@ class _MyVehiclesPageState extends State<MyVehiclesPage> {
                       borderRadius: BorderRadius.circular(24),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.04),
+                          color: Colors.black.withValues(alpha: 0.04),
                           blurRadius: 15,
                           offset: const Offset(0, 8),
                         ),

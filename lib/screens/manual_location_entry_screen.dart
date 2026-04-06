@@ -120,7 +120,7 @@ class _ManualLocationEntryScreenState extends State<ManualLocationEntryScreen> {
               'longitude': 0,
             }).build();
 
-            if (mounted) {
+            if (context.mounted) {
               Navigator.pop(context); // Close sheet
               Navigator.push(
                 context,
@@ -130,7 +130,7 @@ class _ManualLocationEntryScreenState extends State<ManualLocationEntryScreen> {
               );
             }
           } catch (e) {
-            if (mounted) {
+            if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
             }
           } finally {
@@ -185,7 +185,7 @@ class _ManualLocationEntryScreenState extends State<ManualLocationEntryScreen> {
                 borderRadius: BorderRadius.circular(30),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     blurRadius: 10,
                     offset: const Offset(0, 2),
                   ),
@@ -310,14 +310,18 @@ class _ManualLocationEntryScreenState extends State<ManualLocationEntryScreen> {
 
                     // Construct an address string
                     List<String> addressParts = [];
-                    if (properties['street'] != null)
+                    if (properties['street'] != null) {
                       addressParts.add(properties['street']);
-                    if (properties['city'] != null)
+                    }
+                    if (properties['city'] != null) {
                       addressParts.add(properties['city']);
-                    if (properties['state'] != null)
+                    }
+                    if (properties['state'] != null) {
                       addressParts.add(properties['state']);
-                    if (properties['country'] != null)
+                    }
+                    if (properties['country'] != null) {
                       addressParts.add(properties['country']);
+                    }
                     final address = addressParts.join(', ');
 
                     return Padding(

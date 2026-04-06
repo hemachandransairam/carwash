@@ -42,6 +42,11 @@ class _BookServicesPageState extends State<BookServicesPage> {
   // A matrix of [service_id][vehicle_type] -> price
   final Map<String, Map<String, double>> _pricingMatrix = {};
 
+  // Slot selection logic dependencies
+  List<Map<String, dynamic>> _activeWorkers = [];
+  List<Map<String, dynamic>> _dayBookings = [];
+  bool _isLoadingSlots = true;
+
   IconData _getIconForService(String name) {
     final lower = name.toLowerCase();
     if (lower.contains('exterior')) return Icons.local_car_wash;
@@ -52,6 +57,26 @@ class _BookServicesPageState extends State<BookServicesPage> {
     if (lower.contains('tire')) return Icons.tire_repair;
     if (lower.contains('wax')) return Icons.auto_fix_normal;
     return Icons.settings_suggest;
+  }
+
+  List<String> _getChecklistForService(String name) {
+    final lower = name.toLowerCase();
+    if (lower.contains('express') || lower.contains('exterior')) {
+      return ["Outside foam wash", "Interior mat cleaning", "Tyre polishing"];
+    } else if (lower.contains('interior') || lower.contains('deep')) {
+      return ["Outside foam wash", "Interior vacuuming & mat cleaning", "Dashboard and door pad", "Tyre polishing"];
+    } else if (lower.contains('spa') || lower.contains('complete')) {
+      return ["Outside foam wash", "Interior deep cleaning", "Exterior rubbing & waxing", "Complete detailing"];
+    }
+    return ["Standard inspection", "Eco-friendly products used"];
+  }
+
+  String _getCategoryBadgeForVehicle() {
+    final type = _selectedVehicleType?.toLowerCase() ?? "";
+    if (type.contains('suv') || type.contains('muv') || type.contains('luxury')) {
+      return "ELITE CATEGORY";
+    }
+    return "CLASSIC CATEGORY";
   }
 
   double get _totalPrice {
@@ -80,7 +105,6 @@ class _BookServicesPageState extends State<BookServicesPage> {
   final TextEditingController _addressController = TextEditingController();
   String? _addressLabel;
   List<Map<String, dynamic>> _savedAddresses = [];
-  bool _isLoadingAddresses = true;
 
   @override
   void initState() {
@@ -89,6 +113,56 @@ class _BookServicesPageState extends State<BookServicesPage> {
     _fetchVehicles();
     _fetchAddresses();
     _fetchServices();
+    _fetchSlotData();
+  }
+
+  Future<void> _fetchSlotData() async {
+    setState(() => _isLoadingSlots = true);
+    try {
+      final workersResponse = await MockDatabase.instance.client
+          .from('workers')
+          .select()
+          .build<List<Map<String, dynamic>>>();
+
+      // Filter APPROVED workers locally to avoid DB case-sensitivity issues
+      final workers = workersResponse.where((w) {
+         final status = w['status']?.toString().toUpperCase() ?? '';
+         return status == 'APPROVED' || status == 'ACTIVE';
+      }).toList();
+
+      final selectedIso = _selectedDate.toUtc().toIso8601String().split('T')[0];
+      final nextDayIso = _selectedDate.add(const Duration(days: 1)).toUtc().toIso8601String().split('T')[0];
+      
+      final bookingsResponse = await MockDatabase.instance.client
+          .from('bookings')
+          .select() // Just select all to avoid column miss errors!
+          .gte('scheduled_at', selectedIso)
+          .lt('scheduled_at', nextDayIso)
+          .build<List<Map<String, dynamic>>>();
+
+      // Filter non-cancelled locally
+      final bookings = bookingsResponse.where((b) {
+         final status = b['status']?.toString().toUpperCase() ?? '';
+         return status != 'CANCELLED' && status != 'REJECTED';
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          _activeWorkers = workers;
+          _dayBookings = bookings;
+          _isLoadingSlots = false;
+        });
+      }
+    } catch(e) {
+      debugPrint("Error fetching slot data: $e");
+      if (mounted) {
+        setState(() {
+          _activeWorkers = []; // Force empty safely
+          _dayBookings = [];
+          _isLoadingSlots = false;
+        });
+      }
+    }
   }
 
   Future<void> _fetchServices() async {
@@ -200,7 +274,6 @@ class _BookServicesPageState extends State<BookServicesPage> {
         if (mounted) {
           setState(() {
             _savedAddresses = List<Map<String, dynamic>>.from(data);
-            _isLoadingAddresses = false;
             // Set default address if exists
             if (_savedAddresses.isNotEmpty && _addressController.text.isEmpty) {
               final def = _savedAddresses.firstWhere((a) => a['is_default'] == true, orElse: () => _savedAddresses.first);
@@ -210,10 +283,8 @@ class _BookServicesPageState extends State<BookServicesPage> {
           });
         }
       } catch (e) {
-        if (mounted) setState(() => _isLoadingAddresses = false);
+        // Ignored
       }
-    } else {
-      if (mounted) setState(() => _isLoadingAddresses = false);
     }
   }
 
@@ -337,7 +408,7 @@ class _BookServicesPageState extends State<BookServicesPage> {
                 color: Colors.white,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     blurRadius: 10,
                     offset: const Offset(0, -5),
                   ),
@@ -382,7 +453,7 @@ class _BookServicesPageState extends State<BookServicesPage> {
                 color: Colors.white,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     blurRadius: 10,
                     offset: const Offset(0, -5),
                   ),
@@ -401,7 +472,7 @@ class _BookServicesPageState extends State<BookServicesPage> {
                 color: Colors.white,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     blurRadius: 10,
                     offset: const Offset(0, -5),
                   ),
@@ -552,7 +623,7 @@ class _BookServicesPageState extends State<BookServicesPage> {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
+                        color: Colors.black.withValues(alpha: 0.04),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -765,6 +836,8 @@ class _BookServicesPageState extends State<BookServicesPage> {
                       title: s['name'],
                       icon: s['icon'],
                       price: s['price'].toDouble(),
+                      checklist: _getChecklistForService(s['name']),
+                      categoryBadge: _getCategoryBadgeForVehicle(),
                       isSelected: _selectedServiceIds.contains(s['id']),
                       onTap: () => setState(() {
                         _selectedServiceIds.contains(s['id'])
@@ -833,6 +906,7 @@ class _BookServicesPageState extends State<BookServicesPage> {
                       _rowStartDate =
                           picked; // Update the start of the list view
                     });
+                    _fetchSlotData();
                   }
                 },
                 icon: const Icon(
@@ -859,13 +933,10 @@ class _BookServicesPageState extends State<BookServicesPage> {
                 // The user requirement says: "below date scroll should start from that selected date"
                 // So if I pick "Nov 20", the list should show "Nov 20, Nov 21, ..."
 
-                final baseDate = _selectedDate;
                 // Careful: if I pick a date, I want that to be the first item?
                 // Or do I want to maintain the "selected" logic?
                 // "date scroll should start from that selected date" implies the first item (index 0)
                 // should be the selected date.
-
-                final date = baseDate.add(Duration(days: index));
 
                 // Since the list starts FROM the selected date, the first item (index 0) is always selected by default logic
                 // unless we change selection logic.
@@ -894,6 +965,7 @@ class _BookServicesPageState extends State<BookServicesPage> {
                     setState(() {
                       _selectedDate = dateForCell;
                     });
+                    _fetchSlotData();
                   },
                   child: Container(
                     width: 70,
@@ -954,54 +1026,130 @@ class _BookServicesPageState extends State<BookServicesPage> {
           ),
           const SizedBox(height: 12),
 
-          // Time slots grid
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children:
-                [
-                  "9:00 AM",
-                  "10:00 AM",
-                  "11:00 AM",
-                  "12:00 PM",
-                  "3:00 PM",
-                  "5:00 PM",
-                ].map((time) {
-                  final isSelected = _selectedTime == time;
-                  return GestureDetector(
-                    onTap: () => setState(() => _selectedTime = time),
-                    child: Container(
-                      width: (MediaQuery.of(context).size.width - 64) / 3,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      decoration: BoxDecoration(
-                        color:
-                            isSelected ? const Color(0xFF01102B) : Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color:
-                              isSelected
-                                  ? const Color(0xFF01102B)
-                                  : Colors.grey[300]!,
-                          width: 1,
-                        ),
+          // Time slots grid — 15-min intervals 6:00 AM to 9:00 PM
+          // Past slots are greyed out; unavailable slots are shown greyed (not hidden)
+          _isLoadingSlots ? const Center(child: CircularProgressIndicator()) : Builder(builder: (context) {
+            if (_activeWorkers.isEmpty) {
+               return Container(
+                 padding: const EdgeInsets.all(16),
+                 decoration: BoxDecoration(
+                   color: Colors.red[50],
+                   borderRadius: BorderRadius.circular(12),
+                   border: Border.all(color: Colors.red[200]!),
+                 ),
+                 child: Row(
+                   children: [
+                     Icon(Icons.info_outline, color: Colors.red[700]),
+                     const SizedBox(width: 12),
+                     const Expanded(child: Text("Sorry, there are no active workers available today.", style: TextStyle(color: Colors.red))),
+                   ],
+                 ),
+               );
+            }
+            
+            final now = DateTime.now();
+            final isToday = _selectedDate.year == now.year &&
+                _selectedDate.month == now.month &&
+                _selectedDate.day == now.day;
+
+            // Generate all slots: 6:00 AM (360 min) to 9:00 PM (1260 min) in 15-min steps
+            final List<String> allSlots = [];
+            for (int totalMin = 360; totalMin <= 1260; totalMin += 15) {
+              final h = totalMin ~/ 60;
+              final m = totalMin % 60;
+              final period = h < 12 ? 'AM' : 'PM';
+              final displayH = h == 0 ? 12 : (h > 12 ? h - 12 : h);
+              allSlots.add(
+                '${displayH.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')} $period',
+              );
+            }
+
+            return Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: allSlots.map((time) {
+                final isSelected = _selectedTime == time;
+
+                // Determine if slot is in the past (only relevant for today)
+                bool isPast = false;
+                final parts = time.split(RegExp(r'[: ]'));
+                int h = int.parse(parts[0]);
+                final m = int.parse(parts[1]);
+                final isPM = parts[2] == 'PM';
+                if (isPM && h != 12) h += 12;
+                if (!isPM && h == 12) h = 0;
+                
+                if (isToday) {
+                  final slotMinutes = h * 60 + m;
+                  final nowMinutes = now.hour * 60 + now.minute;
+                  isPast = slotMinutes <= nowMinutes;
+                }
+                
+                final slotStart = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, h, m);
+                final slotEnd = slotStart.add(const Duration(hours: 1)); // 1 hour wash duration
+
+                // Evaluate overlap against ALL active workers
+                int availableWorkers = 0;
+                for (var worker in _activeWorkers) {
+                   bool workerFree = true;
+                   for (var b in _dayBookings) {
+                      if (b['worker_id'] == worker['id']) {
+                         if (b['scheduled_at'] == null) continue;
+                         final bStart = DateTime.parse(b['scheduled_at']).toLocal();
+                         final bEnd = bStart.add(const Duration(hours: 1));
+                         if (bStart.isBefore(slotEnd) && bEnd.isAfter(slotStart)) {
+                            workerFree = false;
+                            break;
+                         }
+                      }
+                   }
+                   if (workerFree) availableWorkers++;
+                }
+
+                final isDisabled = isPast || availableWorkers <= 0;
+
+                return GestureDetector(
+                  onTap: isDisabled
+                      ? null
+                      : () => setState(() => _selectedTime = time),
+                  child: Container(
+                    width: (MediaQuery.of(context).size.width - 64) / 3,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? const Color(0xFF01102B)
+                          : isDisabled
+                              ? Colors.grey[100]
+                              : Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected
+                            ? const Color(0xFF01102B)
+                            : isDisabled
+                                ? Colors.grey[200]!
+                                : Colors.grey[300]!,
+                        width: 1,
                       ),
-                      child: Center(
-                        child: Text(
-                          time,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color:
-                                isSelected
-                                    ? Colors.white
-                                    : const Color(0xFF01102B),
-                          ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        time,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: isSelected
+                              ? Colors.white
+                              : isDisabled
+                                  ? Colors.grey[400]
+                                  : const Color(0xFF01102B),
                         ),
                       ),
                     ),
-                  );
-                }).toList(),
-          ),
+                  ),
+                );
+              }).toList(),
+            );
+          }),
         ],
       ),
     );
@@ -1052,6 +1200,7 @@ class _BookServicesPageState extends State<BookServicesPage> {
     // continue accessing the position of the device.
     try {
       // Show loading
+      if (!mounted) return;
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -1071,6 +1220,8 @@ class _BookServicesPageState extends State<BookServicesPage> {
         String address =
             "${place.street}, ${place.locality}, ${place.administrativeArea}, ${place.postalCode}";
         setState(() {
+          _latitude = position.latitude;
+          _longitude = position.longitude;
           _addressLabel = "Current";
           _addressController.text = address;
         });

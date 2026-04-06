@@ -3,7 +3,7 @@ import '../core/services/mock_database.dart';
 import 'package:intl/intl.dart';
 import '../widgets/custom_widgets.dart';
 import 'e_ticket_page.dart';
-import 'order_details_page.dart';
+import 'booking_details_page.dart';
 
 class BookingHistoryPage extends StatefulWidget {
   const BookingHistoryPage({super.key});
@@ -94,12 +94,9 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
 
                     return TabBarView(
                       children: [
-                        _buildBookingList(ongoing, "No ongoing orders"),
-                        _buildBookingList(
-                          cancelled,
-                          "No cancelled orders",
-                        ),
-                        _buildBookingList(completed, "No completed orders"),
+                        _buildBookingList(ongoing, "No ongoing bookings"),
+                        _buildBookingList(cancelled, "No cancelled bookings"),
+                        _buildBookingList(completed, "No completed bookings"),
                       ],
                     );
                   },
@@ -161,7 +158,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
     return GestureDetector(
       onTap: () {
         if (status.toUpperCase() == 'COMPLETED') {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => OrderDetailsPage(booking: booking)));
+          Navigator.push(context, MaterialPageRoute(builder: (context) => BookingDetailsPage(booking: booking)));
         } else if (['PENDING', 'CONFIRMED', 'ACCEPTED', 'IN_PROGRESS', 'ARRIVED', 'ASSIGNED'].contains(status.toUpperCase())) {
           _navigateToTicket(context, booking);
         }
@@ -174,7 +171,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -192,7 +189,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: _getStatusColor(status).withOpacity(0.1),
+                  color: _getStatusColor(status).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
@@ -349,6 +346,56 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
   }
 
   Future<void> _cancelBooking(BuildContext context, dynamic bookingId) async {
+    // Find the booking to check scheduled time
+    final bookings = await MockDatabase.instance
+        .from('bookings')
+        .select()
+        .eq('id', bookingId)
+        .build<List<Map<String, dynamic>>>();
+
+    if (bookings.isEmpty) return;
+
+    final booking = bookings.first;
+    final scheduledAt = DateTime.tryParse(booking['scheduled_at'] ?? '');
+    final String status = (booking['status'] ?? '').toUpperCase();
+    
+    // Determine penalty strings and behavior
+    String warningMessage = "Are you sure you want to cancel this booking? Free cancellation applies.";
+    
+    final bool isEnRoute = ['ASSIGNED', 'ARRIVED', 'IN_PROGRESS'].contains(status);
+    
+    if (isEnRoute) {
+        warningMessage = "Worker is en route or has arrived. A 50% penalty applies to this cancellation. Are you sure you wish to proceed?";
+    } else if (scheduledAt != null) {
+      final cutoff = scheduledAt.subtract(const Duration(hours: 2));
+      if (DateTime.now().isAfter(cutoff)) {
+        warningMessage = "You are cancelling within 2 hours of the scheduled slot. A nominal cancellation fee of ₹100 applies. Are you sure you wish to proceed?";
+      }
+    }
+
+    // Confirmation dialog
+    if (!context.mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Cancel Booking?"),
+        content: Text(warningMessage),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("Keep it", style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text("Yes, Cancel", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
     try {
       await MockDatabase.instance
           .from('bookings')
@@ -359,13 +406,17 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Booking cancelled."),
+            content: Text("Booking cancelled. Applicable refunds will be processed in 3–5 business days."),
             backgroundColor: Colors.orange,
           ),
         );
       }
     } catch (e) {
-      // handle error
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Failed to cancel: $e"), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 

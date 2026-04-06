@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../core/services/auth_service.dart';
 import 'complete_profile.dart';
 import '../screens/home_screen.dart';
+import 'dart:async';
 
 class VerifyCodePage extends StatefulWidget {
   final String phoneNumber;
@@ -18,9 +19,34 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
   final List<TextEditingController> _otpControllers =
       List.generate(6, (index) => TextEditingController());
   bool _isLoading = false;
+  int _failedAttempts = 0;
+  bool _isLocked = false;
+
+  // Resend countdown
+  int _resendCountdown = 30;
+  Timer? _resendTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _startResendTimer();
+  }
+
+  void _startResendTimer() {
+    _resendCountdown = 30;
+    _resendTimer?.cancel();
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_resendCountdown == 0) {
+        timer.cancel();
+      } else {
+        if (mounted) setState(() => _resendCountdown--);
+      }
+    });
+  }
 
   @override
   void dispose() {
+    _resendTimer?.cancel();
     for (var controller in _otpControllers) {
       controller.dispose();
     }
@@ -28,6 +54,13 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
   }
 
   Future<void> _verifyOtp() async {
+    if (_isLocked) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Account temporarily locked. Please wait 15 minutes."), backgroundColor: Colors.redAccent),
+      );
+      return;
+    }
+
     final otp = _otpControllers.map((c) => c.text).join();
     if (otp.length < 6) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -73,16 +106,27 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
       }
     } catch (e) {
       if (mounted) {
-        String msg = e.toString().replaceFirst('Exception: ', '');
-        if (msg.startsWith('{')) {
-          try {
-            final decoded = jsonDecode(msg) as Map<String, dynamic>;
-            msg = decoded['error']?.toString() ?? msg;
-          } catch (_) {}
+        _failedAttempts++;
+        if (_failedAttempts >= 5) {
+          setState(() => _isLocked = true);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Maximum attempts reached. Please try again in 15 minutes."), backgroundColor: Colors.redAccent, duration: Duration(seconds: 4)),
+          );
+          Timer(const Duration(minutes: 15), () {
+            if (mounted) setState(() { _isLocked = false; _failedAttempts = 0; });
+          });
+        } else {
+          String msg = e.toString().replaceFirst('Exception: ', '');
+          if (msg.startsWith('{')) {
+            try {
+              final decoded = jsonDecode(msg) as Map<String, dynamic>;
+              msg = decoded['error']?.toString() ?? msg;
+            } catch (_) {}
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Invalid OTP: $msg. Attempts remaining: ${5 - _failedAttempts}"), backgroundColor: Colors.redAccent),
+          );
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Invalid OTP: $msg"), backgroundColor: Colors.redAccent),
-        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -138,25 +182,28 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
                 style: TextStyle(color: Colors.grey),
               ),
               TextButton(
-                onPressed: _isLoading ? null : () async {
+                onPressed: (_isLoading || _resendCountdown > 0 || _isLocked) ? null : () async {
                   setState(() => _isLoading = true);
                   try {
                     await AuthService().sendOtp(widget.phoneNumber);
-                    if (mounted) {
+                    if (context.mounted) {
+                      _startResendTimer();
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("OTP Resent")));
                     }
                   } catch (e) {
-                    if (mounted) {
+                    if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
                     }
                   } finally {
                     if (mounted) setState(() => _isLoading = false);
                   }
                 },
-                child: const Text(
-                  "Resend Code",
+                child: Text(
+                  _resendCountdown > 0
+                      ? "Resend Code in ${_resendCountdown}s"
+                      : "Resend Code",
                   style: TextStyle(
-                    color: Color(0xFF1D3557),
+                    color: _resendCountdown > 0 ? Colors.grey : const Color(0xFF1D3557),
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -168,9 +215,9 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
                 width: double.infinity,
                 height: 55,
                 child: ElevatedButton(
-                  onPressed: _isLoading ? null : _verifyOtp,
+                  onPressed: (_isLoading || _isLocked) ? null : _verifyOtp,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF000814),
+                    backgroundColor: _isLocked ? Colors.grey : const Color(0xFF000814),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30),
                     ),
@@ -178,9 +225,9 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
                   ),
                   child: _isLoading 
                     ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2,))
-                    : const Text(
-                        "Verify OTP",
-                        style: TextStyle(
+                    : Text(
+                        _isLocked ? "Locked" : "Verify OTP",
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 16,
                           fontWeight: FontWeight.bold,

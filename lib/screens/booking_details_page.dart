@@ -2,16 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../core/services/mock_database.dart';
 
-class OrderDetailsPage extends StatefulWidget {
+class BookingDetailsPage extends StatefulWidget {
   final Map<String, dynamic> booking;
 
-  const OrderDetailsPage({super.key, required this.booking});
+  const BookingDetailsPage({super.key, required this.booking});
 
   @override
-  State<OrderDetailsPage> createState() => _OrderDetailsPageState();
+  State<BookingDetailsPage> createState() => _BookingDetailsPageState();
 }
 
-class _OrderDetailsPageState extends State<OrderDetailsPage> {
+class _BookingDetailsPageState extends State<BookingDetailsPage> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _vehicleDetails = [];
   Map<String, dynamic>? _customerData;
@@ -55,14 +55,12 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
               .maybeSingle()
               .build<Map<String, dynamic>?>();
         }
-        if (worker == null) {
-          worker = await MockDatabase.instance
-              .from('users')
-              .select()
-              .eq('id', workerId)
-              .maybeSingle()
-              .build<Map<String, dynamic>?>();
-        }
+        worker ??= await MockDatabase.instance
+            .from('users')
+            .select()
+            .eq('id', workerId)
+            .maybeSingle()
+            .build<Map<String, dynamic>?>();
       }
 
       // 3. Fetch all vehicles for this booking
@@ -199,7 +197,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          "Order Details",
+          "Booking Details",
           style: TextStyle(
             color: Color(0xFF01102B),
             fontSize: 20,
@@ -284,7 +282,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
                   Text(
                     "Booking ID",
                     style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
+                        color: Colors.white.withValues(alpha: 0.6),
                         fontSize: 13,
                         fontWeight: FontWeight.w600),
                   ),
@@ -335,11 +333,11 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
   Widget _buildHeaderInfo(IconData icon, String label, String value) {
     return Column(
       children: [
-        Icon(icon, color: Colors.white.withOpacity(0.6), size: 24),
+        Icon(icon, color: Colors.white.withValues(alpha: 0.6), size: 24),
         const SizedBox(height: 8),
         Text(label,
             style: TextStyle(
-                color: Colors.white.withOpacity(0.6),
+                color: Colors.white.withValues(alpha: 0.6),
                 fontSize: 11,
                 fontWeight: FontWeight.w500)),
         const SizedBox(height: 4),
@@ -362,7 +360,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.03),
+              color: Colors.black.withValues(alpha: 0.03),
               blurRadius: 10,
               offset: const Offset(0, 4))
         ],
@@ -426,7 +424,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 15,
               offset: const Offset(0, 8))
         ],
@@ -597,7 +595,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 15,
               offset: const Offset(0, 8))
         ],

@@ -66,6 +66,75 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  void _updateMobileNumberDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Update Mobile Number"),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("To update your mobile number, verify the OTP sent to your new number.", style: TextStyle(fontSize: 13, color: Colors.grey)),
+            SizedBox(height: 16),
+            TextField(
+              decoration: InputDecoration(
+                hintText: "Enter New Mobile Number",
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.phone,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mobile number updated successfully!")));
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF01102B)),
+            child: const Text("Send OTP", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _manageActiveDevicesDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Manage Active Devices"),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Icons.phone_iphone, color: Colors.green),
+              title: Text("This Device"),
+              subtitle: Text("Active Now"),
+            ),
+            ListTile(
+              leading: Icon(Icons.laptop),
+              title: Text("Web Browser"),
+              subtitle: Text("Last active 2 days ago"),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Close")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () {
+              Navigator.pop(context);
+              _logout(); // Simulates global sign out across tokens
+            },
+            child: const Text("Log out of all devices", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -143,7 +212,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 shape: BoxShape.circle,
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.05),
+                                    color: Colors.black.withValues(alpha: 0.05),
                                     blurRadius: 15,
                                     offset: const Offset(0, 5),
                                   ),
@@ -248,6 +317,18 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                               );
                             },
+                          ),
+                          _buildMenuItem(
+                            context,
+                            "Update Mobile Number",
+                            icon: Icons.phone_android_outlined,
+                            onTap: _updateMobileNumberDialog,
+                          ),
+                          _buildMenuItem(
+                            context,
+                            "Manage Active Devices",
+                            icon: Icons.devices_other_outlined,
+                            onTap: _manageActiveDevicesDialog,
                           ),
                           _buildMenuItem(
                             context,

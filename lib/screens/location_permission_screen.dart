@@ -3,6 +3,19 @@ import 'package:geolocator/geolocator.dart';
 import 'manual_location_entry_screen.dart';
 import 'notification_permission_screen.dart';
 
+// Bangalore bounding box (approximate)
+const double _bangaloreLatMin = 12.834;
+const double _bangaloreLatMax = 13.144;
+const double _bangaloreLngMin = 77.460;
+const double _bangaloreLngMax = 77.780;
+
+bool _isWithinBangalore(double lat, double lng) {
+  return lat >= _bangaloreLatMin &&
+      lat <= _bangaloreLatMax &&
+      lng >= _bangaloreLngMin &&
+      lng <= _bangaloreLngMax;
+}
+
 class LocationPermissionScreen extends StatefulWidget {
   const LocationPermissionScreen({super.key});
 
@@ -22,13 +35,11 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
     });
 
     try {
-      // Check if location services are enabled
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         setState(() {
           _isLoading = false;
-          _locationMessage =
-              'Location services are disabled. Please enable them.';
+          _locationMessage = 'Location services are disabled. Please enable them.';
         });
         _showLocationDialog(
           'Location Services Disabled',
@@ -37,7 +48,6 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
         return;
       }
 
-      // Check location permission
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -46,10 +56,8 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
             _isLoading = false;
             _locationMessage = 'Location permission denied';
           });
-          _showLocationDialog(
-            'Permission Denied',
-            'Location permission is required to find nearby service providers.',
-          );
+          // Offer manual entry instead of dead-end
+          _showPermissionDeniedDialog();
           return;
         }
       }
@@ -59,17 +67,15 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
           _isLoading = false;
           _locationMessage = 'Location permissions are permanently denied';
         });
-        _showLocationDialog(
-          'Permission Permanently Denied',
-          'Please enable location permission in app settings.',
-        );
+        _showPermissionDeniedDialog(permanent: true);
         return;
       }
 
-      // Get current position with a 15-second timeout
       Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium, 
-        timeLimit: const Duration(seconds: 15),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 15),
+        ),
       );
 
       setState(() {
@@ -78,7 +84,12 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
             'Location: ${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
       });
 
-      // Navigate to Notification Permission Screen (Replacement)
+      // Check if within Bangalore
+      if (!_isWithinBangalore(position.latitude, position.longitude)) {
+        if (mounted) _showOutsideBangaloreScreen();
+        return;
+      }
+
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -92,24 +103,64 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
         _isLoading = false;
         _locationMessage = 'Error: $e';
       });
-      _showLocationDialog('Error', 'Failed to get location: $e');
+      _showLocationDialog('Error', 'Failed to get location. Please enter your location manually.');
     }
   }
 
   void _showLocationDialog(String title, String message) {
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(title),
-            content: Text(message),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
           ),
+        ],
+      ),
+    );
+  }
+
+  /// Shows when permission is denied — offers manual entry instead of dead-end
+  void _showPermissionDeniedDialog({bool permanent = false}) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(permanent ? 'Permission Permanently Denied' : 'Permission Denied'),
+        content: const Text(
+          'Location access is needed to find services near you. You can enter your location manually instead.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _enterLocationManually();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF01102B),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Enter Manually', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Shows when location is outside Bangalore service area
+  void _showOutsideBangaloreScreen() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const _OutsideBangaloreScreen(),
+      ),
     );
   }
 
@@ -154,7 +205,7 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
+                            color: Colors.black.withValues(alpha: 0.05),
                             blurRadius: 10,
                             spreadRadius: 2,
                           ),
@@ -242,10 +293,10 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
+                          color: Colors.white.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                             width: 1,
                           ),
                         ),
@@ -263,6 +314,73 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
                 ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown when the user's detected location is outside Bangalore service area
+class _OutsideBangaloreScreen extends StatelessWidget {
+  const _OutsideBangaloreScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF6F6F6),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.location_off_outlined,
+                size: 80,
+                color: Color(0xFF01102B),
+              ),
+              const SizedBox(height: 32),
+              const Text(
+                'Not Available Yet',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF01102B),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'We are yet to onboard your location, please try again later.',
+                style: TextStyle(
+                  fontSize: 15,
+                  color: Color(0xFF7D7D7D),
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 48),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF01102B),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    'Go Back',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

@@ -68,6 +68,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
 
   String? selectedModel;
   String? licenseNumber;
+  int? selectedSeats = 5;
 
   void _showCarDetailsPopup() {
     // Reset fields when opening
@@ -169,6 +170,50 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                             vertical: 14,
                           ),
                         ),
+                      ),
+
+                      const SizedBox(height: 16),
+                      Text(
+                        "Seating Capacity",
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => setDialogState(() => selectedSeats = 5),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: selectedSeats == 5 ? const Color(0xFF01102B) : const Color(0xFFF6F6F6),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text('5 Seater', style: TextStyle(color: selectedSeats == 5 ? Colors.white : Colors.grey[800], fontWeight: FontWeight.w700)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => setDialogState(() => selectedSeats = 7),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: selectedSeats == 7 ? const Color(0xFF01102B) : const Color(0xFFF6F6F6),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text('7+ Seater', style: TextStyle(color: selectedSeats == 7 ? Colors.white : Colors.grey[800], fontWeight: FontWeight.w700)),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
 
                       const SizedBox(height: 24),
@@ -273,7 +318,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                                     ),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withOpacity(0.01),
+                                        color: Colors.black.withValues(alpha: 0.01),
                                         blurRadius: 10,
                                         offset: const Offset(0, 4),
                                       ),
@@ -354,7 +399,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                                               'user_id': user['id'],
                                               'brand_name': selectedBrand,
                                               'vehicle_type': selectedCarType,
-                                              'seat_count': 5, // Default as per SQL
+                                              'seat_count': selectedSeats ?? 5,
                                               'car_model': selectedModel,
                                               'license': licenseNumber,
                                               'created_at': DateTime.now().toUtc().toIso8601String(),
@@ -386,7 +431,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                                             'vehicle_type': selectedCarType,
                                             'car_model': selectedModel,
                                             'license': licenseNumber,
-                                            'seat_count': 5,
+                                            'seat_count': selectedSeats ?? 5,
                                           });
                                         }
                                       } // End if (user != null)
@@ -495,7 +540,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.02),
+                    color: Colors.black.withValues(alpha: 0.02),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -524,7 +569,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.02),
+                      color: Colors.black.withValues(alpha: 0.02),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -563,13 +608,13 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                                       isSelected
                                           ? const Color(
                                             0xFF01102B,
-                                          ).withOpacity(0.05)
+                                          ).withValues(alpha: 0.05)
                                           : Colors.transparent,
                                   border: Border.all(
                                     color:
                                         isSelected
                                             ? const Color(0xFF01102B)
-                                            : Colors.grey.withOpacity(0.1),
+                                            : Colors.grey.withValues(alpha: 0.1),
                                     width: 2,
                                   ),
                                   borderRadius: BorderRadius.circular(16),

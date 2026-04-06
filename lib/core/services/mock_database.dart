@@ -117,8 +117,8 @@ class MockAuth {
       'expires_at': DateTime.now().toUtc().add(const Duration(minutes: 5)).toIso8601String(),
     }).build();
 
-    print("--- DIRECT SENDING TO WHATSAPP to $cleanPhone ---");
-    print("TOKEN START: ${token.substring(0, 10)}...");
+    debugPrint("--- DIRECT SENDING TO WHATSAPP to $cleanPhone ---");
+    debugPrint("TOKEN START: ${token.substring(0, 10)}...");
     
     final response = await http.post(
       Uri.parse("https://graph.facebook.com/v17.0/$phoneId/messages"),

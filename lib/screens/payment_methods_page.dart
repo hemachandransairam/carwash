@@ -53,12 +53,16 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
     }
 
     try {
-      // 1. Fetch all 'APPROVED' workers from the workers table
-      final List<Map<String, dynamic>> approvedWorkers = await MockDatabase.instance.client
+      // 1. Fetch all workers from the workers table
+      final List<Map<String, dynamic>> workersResponse = await MockDatabase.instance.client
           .from('workers')
-          .select('id, user_id')
-          .eq('status', 'APPROVED')
+          .select()
           .build<List<Map<String, dynamic>>>();
+
+      final List<Map<String, dynamic>> approvedWorkers = workersResponse.where((w) {
+         final status = w['status']?.toString().toUpperCase() ?? '';
+         return status == 'APPROVED' || status == 'ACTIVE';
+      }).toList();
 
       if (approvedWorkers.isEmpty) {
         throw Exception("No approved workers are currently on duty. Our team is expanding!");
@@ -67,23 +71,44 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
       // 2. Find an approved worker who is NOT busy at the selected time
       Map<String, dynamic>? assignedWorkerData;
       String? assignedWorkerId;
-      final selectedIso = widget.selectedDate.toUtc().toIso8601String().split('T')[0];
+      // Parse exact datetime from date + time ("10:15 AM")
+      final tParts = widget.selectedTime.split(RegExp(r'[: ]'));
+      int tHour = int.parse(tParts[0]);
+      int tMin = int.parse(tParts[1]);
+      if (tParts[2] == 'PM' && tHour != 12) tHour += 12;
+      if (tParts[2] == 'AM' && tHour == 12) tHour = 0;
+      final exactDateTime = DateTime(widget.selectedDate.year, widget.selectedDate.month, widget.selectedDate.day, tHour, tMin);
+      final exactEndDateTime = exactDateTime.add(const Duration(hours: 1));
       
       for (var worker in approvedWorkers) {
         final String workerTableId = worker['id']; // This is what bookings.worker_id references
         final String userId = worker['user_id'];
 
         // Check if this worker has any bookings on the selected day
-        final busyBookings = await MockDatabase.instance.client
+        final busyBookingsResp = await MockDatabase.instance.client
             .from('bookings')
-            .select('id')
+            .select()
             .eq('worker_id', workerTableId)
             .build<List<Map<String, dynamic>>>();
+            
+        final busyBookings = busyBookingsResp.where((b) {
+           final status = b['status']?.toString().toUpperCase() ?? '';
+           return status != 'CANCELLED' && status != 'REJECTED';
+        }).toList();
         
-        bool isBusy = busyBookings.any((b) {
-          final bDate = b['scheduled_at']?.toString().split('T')[0];
-          return bDate == selectedIso;
-        });
+        bool isBusy = false;
+        
+        for (var b in busyBookings) {
+          if (b['scheduled_at'] == null) continue;
+          final bStart = DateTime.parse(b['scheduled_at']).toLocal();
+          final bEnd = bStart.add(const Duration(hours: 1));
+          
+          // Check for intersection
+          if (bStart.isBefore(exactEndDateTime) && bEnd.isAfter(exactDateTime)) {
+             isBusy = true;
+             break;
+          }
+        }
 
         if (!isBusy) {
           // Worker is free! Now get their user details (name, etc.)
@@ -102,23 +127,12 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
         }
       }
 
-      // Fallback: If everyone is busy, we follow the previous instruction and pick the first approved worker anyway
-      if (assignedWorkerId == null && approvedWorkers.isNotEmpty) {
-        final fallbackWorker = approvedWorkers.first;
-        final userDetails = await MockDatabase.instance.client
-            .from('users')
-            .select()
-            .eq('id', fallbackWorker['user_id'])
-            .maybeSingle()
-            .build<Map<String, dynamic>?>();
-        
-        if (userDetails != null) {
-          assignedWorkerData = userDetails;
-          assignedWorkerId = fallbackWorker['id'];
-        }
+      // Fallback: If everyone is busy, we throw an error (Do not just arbitrarily override! That breaks overlaps).
+      if (assignedWorkerId == null) {
+         throw Exception("No workers are available at ${widget.selectedTime}. Please select a different time slot.");
       }
 
-      if (assignedWorkerId == null || assignedWorkerData == null) {
+      if (assignedWorkerData == null) {
         throw Exception("Unable to find an available approved worker right now.");
       }
 
@@ -130,9 +144,9 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
         'vehicle_ids': widget.selectedVehicleIds,
         'worker_id': assignedWorkerId,
         'booking_type': 'SCHEDULED',
-        'scheduled_at': widget.selectedDate.toUtc().toIso8601String(),
-        'service_start': widget.selectedDate.toUtc().toIso8601String(), 
-        'service_end': widget.selectedDate.add(const Duration(hours: 1)).toUtc().toIso8601String(), 
+        'scheduled_at': exactDateTime.toUtc().toIso8601String(),
+        'service_start': exactDateTime.toUtc().toIso8601String(), 
+        'service_end': exactEndDateTime.toUtc().toIso8601String(), 
         'status': 'ASSIGNED',
         'base_amount': widget.totalPrice,
         'discount_amount': 0.0,
@@ -210,7 +224,7 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
                   ),
                   const SizedBox(height: 32),
                   const Text(
-                    "Order Received",
+                    "Booking Confirmed",
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w800,
@@ -219,7 +233,7 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    "Your order for the Carwash has been received. Our worker ${worker['name']} will arrive at ${widget.selectedTime}.",
+                    "Your booking for the Carwash has been confirmed. Our professional ${worker['name']} will arrive at ${widget.selectedTime}.",
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,
@@ -315,7 +329,7 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.01),
+                    color: Colors.black.withValues(alpha: 0.01),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -404,7 +418,7 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
                   ? null
                   : [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.03),
+                      color: Colors.black.withValues(alpha: 0.03),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),

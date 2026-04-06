@@ -50,6 +50,8 @@ Widget buildServiceTile({
   required bool isSelected,
   required VoidCallback onTap,
   double? price,
+  List<String>? checklist,
+  String? categoryBadge,
 }) {
   return GestureDetector(
     onTap: onTap,
@@ -65,51 +67,103 @@ Widget buildServiceTile({
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF6F6F6),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(icon, color: const Color(0xFF01102B), size: 24),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                    color: Color(0xFF01102B),
-                  ),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF6F6F6),
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                if (price != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    "Rs. ${price.toStringAsFixed(0)}",
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      color: Colors.grey,
+                child: Icon(icon, color: const Color(0xFF01102B), size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                              color: Color(0xFF01102B),
+                            ),
+                          ),
+                        ),
+                        if (categoryBadge != null)
+                          Container(
+                            margin: const EdgeInsets.only(left: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: categoryBadge == "ELITE" ? Colors.amber[100] : Colors.blue[100],
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              categoryBadge,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: categoryBadge == "ELITE" ? Colors.amber[900] : Colors.blue[900],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    if (price != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        "Rs. ${price.toStringAsFixed(0)}",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (isSelected)
+                const Icon(Icons.check_circle, color: Color(0xFF01102B), size: 24)
+              else
+                const Icon(Icons.circle_outlined, color: Colors.grey, size: 24),
+            ],
+          ),
+          if (checklist != null && checklist.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Divider(color: Color(0xFFF0F0F0)),
+            const SizedBox(height: 12),
+            ...checklist.map((item) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.check, size: 16, color: Colors.green),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      item,
+                      style: TextStyle(fontSize: 13, color: Colors.grey[600], fontWeight: FontWeight.w500),
                     ),
                   ),
                 ],
-              ],
-            ),
-          ),
-          if (isSelected)
-            const Icon(Icons.check_circle, color: Color(0xFF01102B), size: 24),
+              ),
+            )),
+          ],
         ],
       ),
     ),

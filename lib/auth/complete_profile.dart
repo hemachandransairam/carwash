@@ -12,8 +12,11 @@ class CompleteProfilePage extends StatefulWidget {
 class _CompleteProfilePageState extends State<CompleteProfilePage> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _gstController = TextEditingController();
   String? _selectedGender;
-  String _selectedCountryCode = "+91"; // Default country code
+  String _selectedCountryCode = "+91";
+  DateTime? _selectedDob;
   bool _isLoading = false;
 
   @override
@@ -21,15 +24,13 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
     super.initState();
     final user = MockDatabase.instance.auth.currentUser;
     if (user != null && user['phone'] != null) {
-      // Pre-fill phone if available (though they might want to confirm it)
       String fullPhone = user['phone']!;
       if (fullPhone.startsWith('+')) {
-        // Try to separate country code
         if (fullPhone.length > 10) {
-           _selectedCountryCode = fullPhone.substring(0, fullPhone.length - 10);
-           _phoneController.text = fullPhone.substring(fullPhone.length - 10);
+          _selectedCountryCode = fullPhone.substring(0, fullPhone.length - 10);
+          _phoneController.text = fullPhone.substring(fullPhone.length - 10);
         } else {
-           _phoneController.text = fullPhone;
+          _phoneController.text = fullPhone;
         }
       } else {
         _phoneController.text = fullPhone;
@@ -41,7 +42,20 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
+    _emailController.dispose();
+    _gstController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDob() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(1995),
+      firstDate: DateTime(1940),
+      lastDate: DateTime.now().subtract(const Duration(days: 365 * 16)),
+      helpText: 'Select Date of Birth',
+    );
+    if (picked != null) setState(() => _selectedDob = picked);
   }
 
   Future<void> _handleCompleteProfile() async {
@@ -62,13 +76,15 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
         if (user['id'] != null) 'id': user['id'],
         'name': name,
         'phone': '$_selectedCountryCode${_phoneController.text.trim()}',
+        'email': _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
         'gender': _selectedGender,
+        'gst_number': _gstController.text.trim().isEmpty ? null : _gstController.text.trim(),
+        'date_of_birth': _selectedDob?.toIso8601String(),
         'role': 'USER',
         'created_at': DateTime.now().toUtc().toIso8601String(),
       }).select().maybeSingle().build<Map<String, dynamic>?>();
 
       if (result != null) {
-        // Update the mock session with the full profile
         MockDatabase.instance.auth.updateSessionUser(result);
       }
 
@@ -148,31 +164,41 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
                       ),
                       child: IconButton(
                         padding: EdgeInsets.zero,
-                        icon: const Icon(
-                          Icons.edit_outlined,
-                          size: 18,
-                          color: Colors.white,
-                        ),
-                        onPressed: () {}, // Logic to pick image
+                        icon: const Icon(Icons.edit_outlined, size: 18, color: Colors.white),
+                        onPressed: () {},
                       ),
                     ),
                   ),
                 ],
               ),
-              SizedBox(height: isSmallScreen ? 20 : 40),
+              SizedBox(height: isSmallScreen ? 20 : 32),
 
-              _buildLabel("Name"),
+              _buildLabel("Name *"),
               _buildTextField(_nameController, "Ex. John Doe"),
-              SizedBox(height: isSmallScreen ? 12 : 20),
+              SizedBox(height: isSmallScreen ? 12 : 16),
 
-              _buildLabel("Phone Number"),
+              _buildLabel("Phone Number *"),
               _buildPhoneField(),
-              SizedBox(height: isSmallScreen ? 12 : 20),
+              SizedBox(height: isSmallScreen ? 12 : 16),
+
+              _buildLabel("Email (Optional)"),
+              _buildTextField(_emailController, "example@email.com",
+                  keyboardType: TextInputType.emailAddress),
+              SizedBox(height: isSmallScreen ? 12 : 16),
 
               _buildLabel("Gender"),
               _buildGenderDropdown(),
+              SizedBox(height: isSmallScreen ? 12 : 16),
 
-              const SizedBox(height: 40),
+              _buildLabel("Date of Birth (Optional)"),
+              _buildDobPicker(),
+              SizedBox(height: isSmallScreen ? 12 : 16),
+
+              _buildLabel("GST Number (Optional)"),
+              _buildTextField(_gstController, "e.g. 29ABCDE1234F1Z5"),
+              SizedBox(height: isSmallScreen ? 12 : 16),
+
+              const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
                 height: 55,
@@ -185,16 +211,20 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
                     ),
                     elevation: 0,
                   ),
-                  child: _isLoading 
-                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2,))
-                    : const Text(
-                        "Complete Profile",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
+                      : const Text(
+                          "Complete Profile",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
                 ),
               ),
               const SizedBox(height: 20),
@@ -218,18 +248,20 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String hint) {
+  Widget _buildTextField(
+    TextEditingController controller,
+    String hint, {
+    TextInputType keyboardType = TextInputType.text,
+  }) {
     return TextField(
       controller: controller,
+      keyboardType: keyboardType,
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: TextStyle(color: Colors.grey.withOpacity(0.5), fontSize: 14),
+        hintStyle: TextStyle(color: Colors.grey.withValues(alpha: 0.5), fontSize: 14),
         filled: true,
         fillColor: const Color(0xFFFAFAFA),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 18,
-        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: Colors.grey.shade100),
@@ -237,6 +269,32 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Color(0xFF000814)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDobPicker() {
+    return GestureDetector(
+      onTap: _pickDob,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFAFAFA),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade100),
+        ),
+        child: Text(
+          _selectedDob == null
+              ? 'Select date of birth'
+              : '${_selectedDob!.day}/${_selectedDob!.month}/${_selectedDob!.year}',
+          style: TextStyle(
+            fontSize: 14,
+            color: _selectedDob == null
+                ? Colors.grey.withValues(alpha: 0.5)
+                : const Color(0xFF000814),
+          ),
         ),
       ),
     );
@@ -257,13 +315,12 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
             child: DropdownButton<String>(
               value: _selectedCountryCode,
               icon: const Icon(Icons.keyboard_arrow_down, size: 20),
-              items:
-                  ["+91", "+1", "+44", "+971"].map((String value) {
-                    return DropdownMenuItem<String>(
-                      value: value,
-                      child: Text(value, style: const TextStyle(fontSize: 15)),
-                    );
-                  }).toList(),
+              items: ["+91", "+1", "+44", "+971"].map((String value) {
+                return DropdownMenuItem<String>(
+                  value: value,
+                  child: Text(value, style: const TextStyle(fontSize: 15)),
+                );
+              }).toList(),
               onChanged: (newValue) {
                 setState(() => _selectedCountryCode = newValue!);
               },
@@ -277,16 +334,10 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
             keyboardType: TextInputType.phone,
             decoration: InputDecoration(
               hintText: "Enter Phone Number",
-              hintStyle: TextStyle(
-                color: Colors.grey.withOpacity(0.5),
-                fontSize: 14,
-              ),
+              hintStyle: TextStyle(color: Colors.grey.withValues(alpha: 0.5), fontSize: 14),
               filled: true,
               fillColor: const Color(0xFFFAFAFA),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 18,
-              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(color: Colors.grey.shade100),
@@ -314,19 +365,15 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: _selectedGender,
-          hint: const Text(
-            "Select",
-            style: TextStyle(color: Colors.grey, fontSize: 14),
-          ),
+          hint: const Text("Select", style: TextStyle(color: Colors.grey, fontSize: 14)),
           isExpanded: true,
           icon: const Icon(Icons.keyboard_arrow_down),
-          items:
-              ["Male", "Female", "Other"].map((String value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value),
-                );
-              }).toList(),
+          items: ["Male", "Female", "Other"].map((String value) {
+            return DropdownMenuItem<String>(
+              value: value,
+              child: Text(value),
+            );
+          }).toList(),
           onChanged: (newValue) => setState(() => _selectedGender = newValue),
         ),
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/custom_widgets.dart';
 import 'payment_methods_page.dart';
+import '../core/services/mock_database.dart';
 
 class BookingSummaryPage extends StatelessWidget {
   final List<Map<String, dynamic>> selectedServices;
@@ -30,6 +31,35 @@ class BookingSummaryPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 1. Fetch user to check for Apartment Plan constraints
+    final user = MockDatabase.instance.auth.currentUser;
+    final bool isApartmentPlan = user?['subscription_tier'] == 'APARTMENT_PLAN' || user?['is_apartment_resident'] == true;
+    
+    // We assume if it's explicitly a plan wash, it zeroes out
+    final bool isCoveredWash = selectedServices.any((s) => 
+        s['name'].toString().toLowerCase().contains('spray wash') || 
+        s['name'].toString().toLowerCase().contains('foam wash plan') ||
+        s['name'].toString().toLowerCase().contains('group plan')
+    );
+
+    double baseTotal = totalPrice;
+    double fee = 199;
+    double tax = 20;
+
+    if (isApartmentPlan && isCoveredWash) {
+      baseTotal = 0;
+      fee = 0;
+      tax = 0;
+    }
+
+    double finalTotal = baseTotal + fee + tax;
+    double apartmentDiscount = 0;
+
+    if (isApartmentPlan && !isCoveredWash) {
+      apartmentDiscount = finalTotal * 0.10; // 10% off for non-plan washes
+      finalTotal -= apartmentDiscount;
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF6F6F6),
       appBar: buildGlobalAppBar(context: context, title: "Booking Summary"),
@@ -54,7 +84,7 @@ class BookingSummaryPage extends StatelessWidget {
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
+                    color: Colors.black.withValues(alpha: 0.04),
                     blurRadius: 15,
                     offset: const Offset(0, 8),
                   ),
@@ -75,11 +105,49 @@ class BookingSummaryPage extends StatelessWidget {
                   ...selectedServices.map(
                     (service) => _buildPriceItem(
                       service['name'],
-                      "Rs. ${service['price']}",
+                      isApartmentPlan && isCoveredWash ? "Rs. 0" : "Rs. ${service['price']}",
                     ),
                   ),
-                  _buildPriceItem("Convenience Fee", "Rs. 199"),
-                  _buildPriceItem("Tax", "Rs. 20"),
+                  _buildPriceItem("Convenience Fee", "Rs. ${fee.toStringAsFixed(0)}"),
+                  _buildPriceItem("Tax", "Rs. ${tax.toStringAsFixed(0)}"),
+
+                  if (isApartmentPlan) ...[
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Divider(color: Color(0xFFF0F0F0), thickness: 1),
+                    ),
+                    if (isCoveredWash)
+                      const Text(
+                        "Covered under Apartment Plan: ₹0",
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.green,
+                        ),
+                      )
+                    else if (apartmentDiscount > 0)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            "Apartment Benefit",
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.green,
+                            ),
+                          ),
+                          Text(
+                            "- Rs. ${apartmentDiscount.toStringAsFixed(0)}",
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.green,
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
 
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 20),
@@ -97,7 +165,7 @@ class BookingSummaryPage extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        "Rs. ${(totalPrice + 199 + 20).toStringAsFixed(0)}",
+                        "Rs. ${finalTotal.toStringAsFixed(0)}",
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
@@ -117,7 +185,7 @@ class BookingSummaryPage extends StatelessWidget {
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
+                    color: Colors.black.withValues(alpha: 0.04),
                     blurRadius: 15,
                     offset: const Offset(0, 8),
                   ),
@@ -230,7 +298,7 @@ class BookingSummaryPage extends StatelessWidget {
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
+                    color: Colors.black.withValues(alpha: 0.04),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -295,7 +363,7 @@ class BookingSummaryPage extends StatelessWidget {
                           selectedVehicles
                               .map((v) => v['id'] as String)
                               .toList(),
-                      totalPrice: totalPrice + 199 + 20,
+                      totalPrice: finalTotal,
                       selectedDate: selectedDate,
                       selectedTime: selectedTime,
                       vehicle: vehicle,

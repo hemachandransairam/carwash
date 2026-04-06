@@ -106,7 +106,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
       value: value,
       onChanged: onChanged,
-      activeColor: const Color(0xFF01102B),
+      activeThumbColor: const Color(0xFF01102B),
     );
   }
 
@@ -116,7 +116,7 @@ class _SettingsPageState extends State<SettingsPage> {
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: const Color(0xFF01102B).withOpacity(0.05),
+          color: const Color(0xFF01102B).withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(icon, color: const Color(0xFF01102B), size: 20),

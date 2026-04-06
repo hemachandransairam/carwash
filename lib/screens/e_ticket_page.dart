@@ -78,7 +78,7 @@ class ETicketPage extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
                             const Text(
-                              "Your order has been placed\nsuccessfully",
+                              "Your booking has been placed\nsuccessfully",
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 13,
@@ -116,7 +116,7 @@ class ETicketPage extends StatelessWidget {
 
                             // Handled By Section
                             const Text(
-                              "YOUR ORDER WILL BE HANDLED BY",
+                              "YOUR BOOKING WILL BE HANDLED BY",
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w800,
@@ -356,7 +356,7 @@ class ETicketPage extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
                 ),
                 Text(
-                  worker?['phone'] ?? "WinkWash Team",
+                  worker?['phone'] ?? "WynkWash Team",
                   style: const TextStyle(
                     color: Colors.grey,
                     fontSize: 11,
@@ -534,7 +534,7 @@ class ETicketPage extends StatelessWidget {
                       pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
-                          pw.Text("WinkWash", style: pw.TextStyle(fontSize: 28, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
+                          pw.Text("WynkWash", style: pw.TextStyle(fontSize: 28, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
                           pw.Text("E-Ticket & Receipt", style: pw.TextStyle(fontSize: 14, color: PdfColors.grey700)),
                         ],
                       ),
@@ -577,7 +577,7 @@ class ETicketPage extends StatelessWidget {
                   ),
                   pw.Spacer(),
                   pw.Center(
-                    child: pw.Text("Thank you for choosing WinkWash!", style: pw.TextStyle(fontSize: 12, color: PdfColors.grey600, fontStyle: pw.FontStyle.italic)),
+                    child: pw.Text("Thank you for choosing WynkWash!", style: pw.TextStyle(fontSize: 12, color: PdfColors.grey600, fontStyle: pw.FontStyle.italic)),
                   ),
                 ],
               ),
