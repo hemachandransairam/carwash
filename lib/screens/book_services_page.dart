@@ -41,8 +41,7 @@ class _BookServicesPageState extends State<BookServicesPage> {
   final Set<String> _selectedServiceIds = {};
   List<Map<String, dynamic>> _availableServices = [];
   bool _isLoadingServices = true;
-  // A matrix of [service_id][vehicle_type] -> price
-  final Map<String, Map<String, double>> _pricingMatrix = {};
+
 
   // Slot selection logic dependencies
   List<Map<String, dynamic>> _activeWorkers = [];
@@ -96,72 +95,6 @@ class _BookServicesPageState extends State<BookServicesPage> {
     return ["Standard inspection", "Eco-friendly products used"];
   }
 
-  final Map<String, Map<String, Map<String, dynamic>>> _specialPricing = {
-    'CLASSIC': {
-      'Express Doorstep Wash': {'mrp': 1200, 'offer': 1100, 'save': 100},
-      'Interior Deep Cleaning': {'mrp': 2750, 'offer': 2500, 'save': 250},
-      'Exterior Rubbing & Waxing': {'mrp': 3250, 'offer': 2900, 'save': 350},
-      'Complete Car Spa': {'mrp': 6000, 'offer': 4900, 'save': 1100},
-    },
-    'ELITE': {
-      'Express Doorstep Wash': {'mrp': 1700, 'offer': 1500, 'save': 200},
-      'Interior Deep Cleaning': {'mrp': 3500, 'offer': 2900, 'save': 600},
-      'Exterior Rubbing & Waxing': {'mrp': 4000, 'offer': 3500, 'save': 500},
-      'Complete Car Spa': {'mrp': 7500, 'offer': 5900, 'save': 1600},
-    },
-  };
-
-  String _getCategoryForVehicle(Map<String, dynamic> vehicle) {
-    final type = (vehicle['vehicle_type'] as String?)?.toLowerCase() ?? "";
-    final model = (vehicle['car_model'] as String?)?.toLowerCase() ?? "";
-    final brand = (vehicle['brand_name'] as String?)?.toLowerCase() ?? "";
-    final seatCount = (vehicle['seat_count'] as num?)?.toInt() ?? 5;
-
-    // Case 0: High Seating Capacity (7+ seats)
-    if (seatCount >= 7) {
-      return 'ELITE';
-    }
-
-    // Elite Criteria: Luxury brands, Large SUVs, 7-Seaters
-    final eliteKeywords = [
-      'bmw', 'mercedes', 'audi', 'luxury', 'large suv', '7-seater', '7 seater', '7seater',
-      'innova', 'fortuner', 'endeavour', 'gloster', 'safari', 'xuv700', 'jaguar', 'land rover', 'range rover', 'volvo', 'porsche', 'lexus', 
-      'volkswagen', 'lamborghini', 'mini', 'bentley'
-    ];
-
-    // Case 1: Luxury brands or explicitly Elite models
-    if (eliteKeywords.any((k) => 
-        brand.contains(k) || 
-        model.contains(k))) {
-      return 'ELITE';
-    }
-
-    // Case 2: Specialized vehicle types (esp. 7-seaters from ANY brand)
-    if (type.contains('luxury') || 
-        type.contains('large suv') || 
-        type.contains('7-seater') || 
-        type.contains('7 seater') || 
-        type.contains('7seater')) {
-      return 'ELITE';
-    }
-
-    // Default to Classic (Hatchbacks, Sedans, Small SUVs/MUVs)
-    return 'CLASSIC';
-  }
-
-  String _getCategoryBadgeForVehicle() {
-    if (_selectedVehicleIds.isEmpty) return "SELECT VEHICLE";
-    final currentId = _selectedVehicleIds.elementAt(_currentVehicleIndex);
-    final vehicle = _savedVehicles.firstWhere(
-      (v) => v['id'] == currentId,
-      orElse: () => {},
-    );
-    if (vehicle.isEmpty) return "CLASSIC CATEGORY";
-
-    final category = _getCategoryForVehicle(vehicle);
-    return "$category CATEGORY";
-  }
-
   double get _totalPrice {
     double total = 0;
     
@@ -174,67 +107,33 @@ class _BookServicesPageState extends State<BookServicesPage> {
       for (int i = 0; i < _currentVehicleIndex; i++) {
         final vId = _selectedVehicleIds.elementAt(i);
         final sIds = _multiVehicleServiceSelections[vId] ?? {};
-        final vehicle = _savedVehicles.firstWhere((v) => v['id'] == vId, orElse: () => {});
-        if (vehicle.isEmpty) continue;
-        final category = _getCategoryForVehicle(vehicle);
         
         for (var sId in sIds) {
           final service = _availableServices.firstWhere((s) => s['id'] == sId, orElse: () => {});
-          final sName = service['name'] as String? ?? "";
-          final special = _specialPricing[category]?[sName];
-          if (special != null) {
-            total += (special['offer'] as num).toDouble();
-          } else {
-            final vType = (vehicle['vehicle_type'] as String?)?.toUpperCase() ?? "SEDAN";
-            final price = _pricingMatrix[sId]?[vType];
-            total += price ?? (service['base_price'] as num?)?.toDouble() ?? 0.0;
-          }
+          total += (service['price'] as num?)?.toDouble() ?? 0.0;
         }
       }
 
       // 2. Add current vehicle's selections (Step 1 active state)
-      final currentVId = _selectedVehicleIds.elementAt(_currentVehicleIndex);
-      final vehicle = _savedVehicles.firstWhere((v) => v['id'] == currentVId, orElse: () => {});
-      if (vehicle.isNotEmpty) {
-        final category = _getCategoryForVehicle(vehicle);
-        for (var sId in _selectedServiceIds) {
-          final service = _availableServices.firstWhere((s) => s['id'] == sId, orElse: () => {});
-          final sName = service['name'] as String? ?? "";
-          final special = _specialPricing[category]?[sName];
-          if (special != null) {
-            total += (special['offer'] as num).toDouble();
-          } else {
-            final vType = (vehicle['vehicle_type'] as String?)?.toUpperCase() ?? "SEDAN";
-            final price = _pricingMatrix[sId]?[vType];
-            total += price ?? (service['base_price'] as num?)?.toDouble() ?? 0.0;
-          }
-        }
+      for (var sId in _selectedServiceIds) {
+        final service = _availableServices.firstWhere((s) => s['id'] == sId, orElse: () => {});
+        total += (service['price'] as num?)?.toDouble() ?? 0.0;
       }
     } else {
       // In other steps (Schedule, Address, Summary), sum EVERYTHING in the map
       _multiVehicleServiceSelections.forEach((vId, sIds) {
         if (!_selectedVehicleIds.contains(vId)) return;
-        final vehicle = _savedVehicles.firstWhere((v) => v['id'] == vId, orElse: () => {});
-        if (vehicle.isEmpty) return;
-        final category = _getCategoryForVehicle(vehicle);
         
         for (var sId in sIds) {
           final service = _availableServices.firstWhere((s) => s['id'] == sId, orElse: () => {});
-          final sName = service['name'] as String? ?? "";
-          final special = _specialPricing[category]?[sName];
-          if (special != null) {
-            total += (special['offer'] as num).toDouble();
-          } else {
-            final vType = (vehicle['vehicle_type'] as String?)?.toUpperCase() ?? "SEDAN";
-            final price = _pricingMatrix[sId]?[vType];
-            total += price ?? (service['base_price'] as num?)?.toDouble() ?? 0.0;
-          }
+          total += (service['price'] as num?)?.toDouble() ?? 0.0;
         }
       });
     }
     
     return total;
   }
+
 
   // Address selection
   final TextEditingController _addressController = TextEditingController();
@@ -311,7 +210,6 @@ class _BookServicesPageState extends State<BookServicesPage> {
 
   Future<void> _fetchServices() async {
     try {
-      // 1. Fetch core services
       final servicesData =
           await MockDatabase.instance
               .from('services')
@@ -320,84 +218,13 @@ class _BookServicesPageState extends State<BookServicesPage> {
               .order('name')
               .build<List<Map<String, dynamic>>>();
 
-      // 2. Fetch ALL pricing data to build the matrix
-      final pricingData =
-          await MockDatabase.instance
-              .from('service_pricing')
-              .select()
-              .build<List<Map<String, dynamic>>>();
-
-      _pricingMatrix.clear();
-      for (var p in pricingData) {
-        final sId = p['service_id'] as String;
-        final vType = (p['vehicle_type'] as String).toUpperCase();
-        final price = (p['price'] as num).toDouble();
-
-        _pricingMatrix.putIfAbsent(sId, () => {});
-        _pricingMatrix[sId]![vType] = price;
-      }
-
-      // 3. Ensure we include the 4 core services from our special pricing list
-      final Set<String> existingNames =
-          servicesData.map((s) => (s['name'] as String).toLowerCase()).toSet();
-      final List<String> specialNames = [
-        'Express Doorstep Wash',
-        'Interior Deep Cleaning',
-        'Exterior Rubbing & Waxing',
-        'Complete Car Spa',
-      ];
-
-      for (var name in specialNames) {
-        if (!existingNames.contains(name.toLowerCase())) {
-          servicesData.add({
-            'id': 'mock_${name.hashCode}',
-            'name': name,
-            'base_price': 1000.0,
-            'is_active': true,
-          });
-        }
-      }
-
       setState(() {
         _availableServices =
             servicesData.map((s) {
-              // Use first car as visual reference
-              final firstVehicle =
-                  _selectedVehicleIds.isNotEmpty
-                      ? _savedVehicles.firstWhere(
-                        (v) => v['id'] == _selectedVehicleIds.first,
-                        orElse: () => <String, dynamic>{},
-                      )
-                      : <String, dynamic>{};
-              final category =
-                  firstVehicle.isNotEmpty
-                      ? _getCategoryForVehicle(firstVehicle)
-                      : 'CLASSIC';
               final sName = s['name'] as String;
-
-              final special = _specialPricing[category]?[sName];
-              double finalPrice;
-              double? mrp;
-              String? saveText;
-
-              if (special != null) {
-                finalPrice = (special['offer'] as num).toDouble();
-                mrp = (special['mrp'] as num).toDouble();
-                saveText = "You Save ₹${special['save']}";
-              } else {
-                final vType =
-                    (firstVehicle['vehicle_type'] as String? ?? "SEDAN")
-                        .toUpperCase();
-                finalPrice =
-                    _pricingMatrix[s['id']]?[vType] ??
-                    (s['base_price'] as num).toDouble();
-              }
-
               return {
                 ...s,
-                'price': finalPrice,
-                'mrp': mrp,
-                'saveText': saveText,
+                'price': (s['base_price'] as num).toDouble(),
                 'icon': _getIconForService(sName),
               };
             }).toList();
@@ -543,23 +370,10 @@ class _BookServicesPageState extends State<BookServicesPage> {
 
         for (var vId in _selectedVehicleIds) {
           final sIds = _multiVehicleServiceSelections[vId] ?? {};
-          final v = _savedVehicles.firstWhere((v) => v['id'] == vId);
-          final vType = (v['vehicle_type'] as String?)?.toUpperCase() ?? "SEDAN";
-          final category = _getCategoryForVehicle(v);
 
           for (var sId in sIds) {
             final s = _availableServices.firstWhere((s) => s['id'] == sId);
-            final sName = s['name'] as String;
-            final special = _specialPricing[category]?[sName];
-            
-            double price;
-            if (special != null) {
-              price = (special['offer'] as num).toDouble();
-            } else {
-              price = _pricingMatrix[sId]?[vType] ?? (s['base_price'] as num).toDouble();
-            }
-            
-            final sData = {...s, 'price': price, 'vehicle_id': vId};
+            final sData = {...s, 'vehicle_id': vId};
             finalServices.add(sData);
             perVehicleServices.putIfAbsent(vId, () => []).add(sData);
           }
@@ -1130,20 +944,15 @@ class _BookServicesPageState extends State<BookServicesPage> {
                   const Center(child: Text("No services available right now")),
                 ..._availableServices.map((s) {
                   final sName = s['name'] as String;
-                  final category = currentV.isNotEmpty ? _getCategoryForVehicle(currentV as Map<String, dynamic>) : 'CLASSIC';
-                  final special = _specialPricing[category]?[sName];
+                  final displayPrice = s['price'] as double;
                   
-                  double displayPrice;
-                  double? displayMrp;
-                  String? displaySave;
-
-                  if (special != null) {
-                    displayPrice = (special['offer'] as num).toDouble();
-                    displayMrp = (special['mrp'] as num).toDouble();
-                    displaySave = "You Save ₹${special['save']}";
-                  } else {
-                    final vType = (currentV['vehicle_type'] as String?)?.toUpperCase() ?? "SEDAN";
-                    displayPrice = _pricingMatrix[s['id']]?[vType] ?? (s['base_price'] as num?)?.toDouble() ?? 1000.0;
+                  // Use inner_description if available for checklist, otherwise use _getChecklistForService
+                  List<String> checklist = [];
+                  if (s['inner_description'] != null && s['inner_description'].toString().isNotEmpty) {
+                    checklist = s['inner_description'].toString().split('\n').where((e) => e.trim().isNotEmpty).toList();
+                  }
+                  if (checklist.isEmpty) {
+                    checklist = _getChecklistForService(sName);
                   }
 
                   return Padding(
@@ -1152,10 +961,10 @@ class _BookServicesPageState extends State<BookServicesPage> {
                       title: sName,
                       icon: s['icon'],
                       price: displayPrice,
-                      mrp: displayMrp,
-                      saveText: displaySave,
-                      checklist: _getChecklistForService(sName),
-                      categoryBadge: _getCategoryBadgeForVehicle(),
+                      mrp: null,
+                      saveText: null,
+                      checklist: checklist,
+                      categoryBadge: (s['category'] as String?)?.toUpperCase() ?? 'CLASSIC',
                       isSelected: _selectedServiceIds.contains(s['id']),
                       onTap:
                           () => setState(() {

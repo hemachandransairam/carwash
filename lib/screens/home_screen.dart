@@ -11,6 +11,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'chat_page.dart';
 import 'e_ticket_page.dart';
+import 'ongoing_service_page.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -170,6 +171,8 @@ class _HomeContentState extends State<HomeContent> {
   // _isLoading is used for cancel action indication
   bool _isLoading = false;
   late final Stream<List<Map<String, dynamic>>> _activeOrderStream;
+  StreamSubscription<List<Map<String, dynamic>>>? _activeOrderSub;
+  String? _autoNavigatedBookingId;
 
   String _currentAddress = "Select Location";
 
@@ -199,6 +202,29 @@ class _HomeContentState extends State<HomeContent> {
         .eq('user_id', user?['id'] ?? '')
         .order('created_at', ascending: false)
         .limit(5) as Stream<List<Map<String, dynamic>>>;
+
+    _activeOrderSub = _activeOrderStream.listen((bookings) {
+      if (!mounted) return;
+      for (final b in bookings) {
+        final status = (b['status'] as String? ?? '').toUpperCase();
+        if (status == 'IN_PROGRESS') {
+          if (_autoNavigatedBookingId != b['id']) {
+            _autoNavigatedBookingId = b['id'];
+            // PostFrameCallback ensures we don't try to navigate during a build phase if this triggers fast
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => OngoingServicePage(booking: b),
+                  ),
+                );
+              }
+            });
+          }
+        }
+      }
+    });
 
     // Start at a large index in the middle for circular scrolling simulation
     _currentBannerPage = _infinitePageCount ~/ 2;
@@ -258,6 +284,7 @@ class _HomeContentState extends State<HomeContent> {
 
   @override
   void dispose() {
+    _activeOrderSub?.cancel();
     _carouselTimer?.cancel();
     _pageController.dispose();
     super.dispose();
@@ -1152,7 +1179,13 @@ class _HomeContentState extends State<HomeContent> {
                   return Padding(
                     padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8),
                     child: GestureDetector(
-                      onTap: () => _navigateToTicket(booking),
+                      onTap: () {
+                        if (statusStr == 'IN_PROGRESS') {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => OngoingServicePage(booking: booking)));
+                        } else {
+                          _navigateToTicket(booking);
+                        }
+                      },
                       child: Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
