@@ -13,6 +13,31 @@ class BookingHistoryPage extends StatefulWidget {
 }
 
 class _BookingHistoryPageState extends State<BookingHistoryPage> {
+  Map<String, String> _serviceNameMap = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadServices();
+  }
+
+  Future<void> _loadServices() async {
+    try {
+      final services = await MockDatabase.instance.from('services').select('id, name').build<List<dynamic>>();
+      Map<String, String> map = {};
+      for (var s in services) {
+        map[s['id'].toString()] = s['name'].toString();
+      }
+      if (mounted) {
+        setState(() {
+          _serviceNameMap = map;
+        });
+      }
+    } catch(e) {
+      // Do nothing on error
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = MockDatabase.instance.auth.currentUser;
@@ -154,6 +179,10 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
     final formattedDate = DateFormat('MMM dd, yyyy • hh:mm a').format(date);
     final status = booking['status'] ?? 'Pending';
     final price = booking['final_amount'] ?? 0;
+    
+    final List<dynamic> serviceIds = booking['service_id'] ?? [];
+    final List<String> serviceNames = serviceIds.map((id) => _serviceNameMap[id.toString()] ?? id.toString()).toList();
+    final String serviceNamesText = serviceNames.isEmpty ? "Car Wash Service" : serviceNames.join(', ');
 
     return GestureDetector(
       onTap: () {
@@ -219,6 +248,15 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
               fontWeight: FontWeight.w800,
               fontSize: 18,
               color: Color(0xFF01102B),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            serviceNamesText,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              color: Colors.grey[700],
             ),
           ),
           const SizedBox(height: 4),
@@ -302,6 +340,9 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
   }
 
   Future<void> _navigateToTicket(BuildContext context, Map<String, dynamic> booking) async {
+    final List<dynamic> serviceIds = booking['service_id'] ?? [];
+    final List<String> serviceNames = serviceIds.map((id) => _serviceNameMap[id.toString()] ?? id.toString()).toList();
+
     // Show loading indicator
     showDialog(
       context: context,
@@ -329,7 +370,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
               bookingId: booking['id']?.toString(),
               qrToken: booking['qr_token']?.toString(),
               vehicle: vehicle ?? {},
-              selectedServices: List<String>.from(booking['service_id'] ?? []),
+              selectedServices: serviceNames,
               selectedDate: DateTime.parse(booking['scheduled_at']),
               selectedTime: DateFormat('hh:mm a').format(DateTime.parse(booking['scheduled_at'])),
               addressLabel: "Home",
