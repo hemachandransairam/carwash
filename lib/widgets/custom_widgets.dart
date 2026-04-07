@@ -50,6 +50,8 @@ Widget buildServiceTile({
   required bool isSelected,
   required VoidCallback onTap,
   double? price,
+  double? mrp,
+  String? saveText,
   List<String>? checklist,
   String? categoryBadge,
 }) {
@@ -77,6 +79,7 @@ Widget buildServiceTile({
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
                 padding: const EdgeInsets.all(12),
@@ -108,7 +111,7 @@ Widget buildServiceTile({
                             margin: const EdgeInsets.only(left: 8),
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: categoryBadge == "ELITE" ? Colors.amber[100] : Colors.blue[100],
+                              color: categoryBadge.contains("ELITE") ? const Color(0xFF2E3A59).withAlpha(20) : const Color(0xFF67B7ED).withAlpha(20),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
@@ -116,20 +119,48 @@ Widget buildServiceTile({
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w800,
-                                color: categoryBadge == "ELITE" ? Colors.amber[900] : Colors.blue[900],
+                                color: categoryBadge.contains("ELITE") ? const Color(0xFF2E3A59) : const Color(0xFF1B6BA7),
                               ),
                             ),
                           ),
                       ],
                     ),
-                    if (price != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        if (mrp != null) ...[
+                          Text(
+                            "₹${mrp.toStringAsFixed(0)}",
+                            style: TextStyle(
+                              decoration: TextDecoration.lineThrough,
+                              fontSize: 14,
+                              color: Colors.grey[400],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        if (price != null)
+                          Text(
+                            "₹${price.toStringAsFixed(0)}",
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 20,
+                              color: Color(0xFFD32F2F), // Red for offer price like image
+                            ),
+                          ),
+                      ],
+                    ),
+                    if (saveText != null && saveText.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Text(
-                        "Rs. ${price.toStringAsFixed(0)}",
+                        saveText,
                         style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                          color: Colors.grey,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.green, // "You Save" color
                         ),
                       ),
                     ],
@@ -138,26 +169,26 @@ Widget buildServiceTile({
               ),
               const SizedBox(width: 8),
               if (isSelected)
-                const Icon(Icons.check_circle, color: Color(0xFF01102B), size: 24)
+                const Icon(Icons.check_circle, color: Color(0xFF01102B), size: 28)
               else
-                const Icon(Icons.circle_outlined, color: Colors.grey, size: 24),
+                const Icon(Icons.circle_outlined, color: Colors.grey, size: 28),
             ],
           ),
           if (checklist != null && checklist.isNotEmpty) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             const Divider(color: Color(0xFFF0F0F0)),
             const SizedBox(height: 12),
             ...checklist.map((item) => Padding(
-              padding: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.check, size: 16, color: Colors.green),
-                  const SizedBox(width: 8),
+                  const Icon(Icons.check_circle_outline, size: 16, color: Colors.green),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       item,
-                      style: TextStyle(fontSize: 13, color: Colors.grey[600], fontWeight: FontWeight.w500),
+                      style: TextStyle(fontSize: 13, color: Colors.grey[700], fontWeight: FontWeight.w600, height: 1.4),
                     ),
                   ),
                 ],

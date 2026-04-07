@@ -36,6 +36,8 @@ class _BookServicesPageState extends State<BookServicesPage> {
   String _selectedTime = "";
 
   // Services selection
+  int _currentVehicleIndex = 0; // Index of the vehicle currently being selected in Step 1
+  final Map<String, Set<String>> _multiVehicleServiceSelections = {}; // VehicleID -> Set of ServiceIDs
   final Set<String> _selectedServiceIds = {};
   List<Map<String, dynamic>> _availableServices = [];
   bool _isLoadingServices = true;
@@ -60,44 +62,177 @@ class _BookServicesPageState extends State<BookServicesPage> {
   }
 
   List<String> _getChecklistForService(String name) {
-    final lower = name.toLowerCase();
-    if (lower.contains('express') || lower.contains('exterior')) {
+    final sName = name.toLowerCase();
+    if (sName.contains("express")) {
       return ["Outside foam wash", "Interior mat cleaning", "Tyre polishing"];
-    } else if (lower.contains('interior') || lower.contains('deep')) {
-      return ["Outside foam wash", "Interior vacuuming & mat cleaning", "Dashboard and door pad", "Tyre polishing"];
-    } else if (lower.contains('spa') || lower.contains('complete')) {
-      return ["Outside foam wash", "Interior deep cleaning", "Exterior rubbing & waxing", "Complete detailing"];
+    } else if (sName.contains("interior deep")) {
+      return [
+        "Outside Foam Wash",
+        "Interior Vacuuming & Mat Cleaning",
+        "Dashboard and Door Pad",
+        "Tyre Polishing",
+      ];
+    } else if (sName.contains("exterior rubbing")) {
+      return [
+        "Outside Foam Wash",
+        "Interior Vacuuming & Mat Cleaning",
+        "Dashboard and Door Pad Polishing",
+        "Outside Hand Wax Polishing",
+        "Outside Rubbing with Machine",
+        "Tyre Polishing",
+      ];
+    } else if (sName.contains("complete car spa")) {
+      return [
+        "Outside Foam Wash",
+        "Interior Vacuuming & Mat Washing",
+        "Interior Roof Cleaning",
+        "Interior Seat Washing",
+        "A/C Steaming",
+        "Interior Dashboard & Door Pad Polishing",
+        "Outside Hand Wax Polishing",
+        "Tyre Dressing & Polishing",
+      ];
     }
     return ["Standard inspection", "Eco-friendly products used"];
   }
 
-  String _getCategoryBadgeForVehicle() {
-    final type = _selectedVehicleType?.toLowerCase() ?? "";
-    if (type.contains('suv') || type.contains('muv') || type.contains('luxury')) {
-      return "ELITE CATEGORY";
+  final Map<String, Map<String, Map<String, dynamic>>> _specialPricing = {
+    'CLASSIC': {
+      'Express Doorstep Wash': {'mrp': 1200, 'offer': 1100, 'save': 100},
+      'Interior Deep Cleaning': {'mrp': 2750, 'offer': 2500, 'save': 250},
+      'Exterior Rubbing & Waxing': {'mrp': 3250, 'offer': 2900, 'save': 350},
+      'Complete Car Spa': {'mrp': 6000, 'offer': 4900, 'save': 1100},
+    },
+    'ELITE': {
+      'Express Doorstep Wash': {'mrp': 1700, 'offer': 1500, 'save': 200},
+      'Interior Deep Cleaning': {'mrp': 3500, 'offer': 2900, 'save': 600},
+      'Exterior Rubbing & Waxing': {'mrp': 4000, 'offer': 3500, 'save': 500},
+      'Complete Car Spa': {'mrp': 7500, 'offer': 5900, 'save': 1600},
+    },
+  };
+
+  String _getCategoryForVehicle(Map<String, dynamic> vehicle) {
+    final type = (vehicle['vehicle_type'] as String?)?.toLowerCase() ?? "";
+    final model = (vehicle['car_model'] as String?)?.toLowerCase() ?? "";
+    final brand = (vehicle['brand_name'] as String?)?.toLowerCase() ?? "";
+    final seatCount = (vehicle['seat_count'] as num?)?.toInt() ?? 5;
+
+    // Case 0: High Seating Capacity (7+ seats)
+    if (seatCount >= 7) {
+      return 'ELITE';
     }
-    return "CLASSIC CATEGORY";
+
+    // Elite Criteria: Luxury brands, Large SUVs, 7-Seaters
+    final eliteKeywords = [
+      'bmw', 'mercedes', 'audi', 'luxury', 'large suv', '7-seater', '7 seater', '7seater',
+      'innova', 'fortuner', 'endeavour', 'gloster', 'safari', 'xuv700', 'jaguar', 'land rover', 'range rover', 'volvo', 'porsche', 'lexus', 
+      'volkswagen', 'lamborghini', 'mini', 'bentley'
+    ];
+
+    // Case 1: Luxury brands or explicitly Elite models
+    if (eliteKeywords.any((k) => 
+        brand.contains(k) || 
+        model.contains(k))) {
+      return 'ELITE';
+    }
+
+    // Case 2: Specialized vehicle types (esp. 7-seaters from ANY brand)
+    if (type.contains('luxury') || 
+        type.contains('large suv') || 
+        type.contains('7-seater') || 
+        type.contains('7 seater') || 
+        type.contains('7seater')) {
+      return 'ELITE';
+    }
+
+    // Default to Classic (Hatchbacks, Sedans, Small SUVs/MUVs)
+    return 'CLASSIC';
+  }
+
+  String _getCategoryBadgeForVehicle() {
+    if (_selectedVehicleIds.isEmpty) return "SELECT VEHICLE";
+    final currentId = _selectedVehicleIds.elementAt(_currentVehicleIndex);
+    final vehicle = _savedVehicles.firstWhere(
+      (v) => v['id'] == currentId,
+      orElse: () => {},
+    );
+    if (vehicle.isEmpty) return "CLASSIC CATEGORY";
+
+    final category = _getCategoryForVehicle(vehicle);
+    return "$category CATEGORY";
   }
 
   double get _totalPrice {
     double total = 0;
-    // For each vehicle, sum its specific service prices
-    for (var vehicleId in _selectedVehicleIds) {
-      final vehicle = _savedVehicles.firstWhere((v) => v['id'] == vehicleId, orElse: () => {});
-      final vType = (vehicle['vehicle_type'] as String?)?.toUpperCase() ?? "SEDAN";
-      
-      for (var sId in _selectedServiceIds) {
-        // Look up price in matrix for THIS car's type, or fallback to base_price from _availableServices if needed
-        final price = _pricingMatrix[sId]?[vType];
-        if (price != null) {
-          total += price;
-        } else {
-          // Fallback to base_price if type not specifically mapped
-          final baseS = _availableServices.firstWhere((s) => s['id'] == sId, orElse: () => {});
-          total += (baseS['base_price'] as num?)?.toDouble() ?? 0.0;
+    
+    // In sequential selection (Step 1), we sum all COMPLETE selections (indices < current)
+    // plus the current in-progress selections.
+    // Subsequent selections (indices > current) are ignored to avoid confusion if going back.
+    
+    if (_currentStep == 1 && _selectedVehicleIds.isNotEmpty) {
+      // 1. Sum up all COMPLETED vehicles (indices BEFORE current)
+      for (int i = 0; i < _currentVehicleIndex; i++) {
+        final vId = _selectedVehicleIds.elementAt(i);
+        final sIds = _multiVehicleServiceSelections[vId] ?? {};
+        final vehicle = _savedVehicles.firstWhere((v) => v['id'] == vId, orElse: () => {});
+        if (vehicle.isEmpty) continue;
+        final category = _getCategoryForVehicle(vehicle);
+        
+        for (var sId in sIds) {
+          final service = _availableServices.firstWhere((s) => s['id'] == sId, orElse: () => {});
+          final sName = service['name'] as String? ?? "";
+          final special = _specialPricing[category]?[sName];
+          if (special != null) {
+            total += (special['offer'] as num).toDouble();
+          } else {
+            final vType = (vehicle['vehicle_type'] as String?)?.toUpperCase() ?? "SEDAN";
+            final price = _pricingMatrix[sId]?[vType];
+            total += price ?? (service['base_price'] as num?)?.toDouble() ?? 0.0;
+          }
         }
       }
+
+      // 2. Add current vehicle's selections (Step 1 active state)
+      final currentVId = _selectedVehicleIds.elementAt(_currentVehicleIndex);
+      final vehicle = _savedVehicles.firstWhere((v) => v['id'] == currentVId, orElse: () => {});
+      if (vehicle.isNotEmpty) {
+        final category = _getCategoryForVehicle(vehicle);
+        for (var sId in _selectedServiceIds) {
+          final service = _availableServices.firstWhere((s) => s['id'] == sId, orElse: () => {});
+          final sName = service['name'] as String? ?? "";
+          final special = _specialPricing[category]?[sName];
+          if (special != null) {
+            total += (special['offer'] as num).toDouble();
+          } else {
+            final vType = (vehicle['vehicle_type'] as String?)?.toUpperCase() ?? "SEDAN";
+            final price = _pricingMatrix[sId]?[vType];
+            total += price ?? (service['base_price'] as num?)?.toDouble() ?? 0.0;
+          }
+        }
+      }
+    } else {
+      // In other steps (Schedule, Address, Summary), sum EVERYTHING in the map
+      _multiVehicleServiceSelections.forEach((vId, sIds) {
+        if (!_selectedVehicleIds.contains(vId)) return;
+        final vehicle = _savedVehicles.firstWhere((v) => v['id'] == vId, orElse: () => {});
+        if (vehicle.isEmpty) return;
+        final category = _getCategoryForVehicle(vehicle);
+        
+        for (var sId in sIds) {
+          final service = _availableServices.firstWhere((s) => s['id'] == sId, orElse: () => {});
+          final sName = service['name'] as String? ?? "";
+          final special = _specialPricing[category]?[sName];
+          if (special != null) {
+            total += (special['offer'] as num).toDouble();
+          } else {
+            final vType = (vehicle['vehicle_type'] as String?)?.toUpperCase() ?? "SEDAN";
+            final price = _pricingMatrix[sId]?[vType];
+            total += price ?? (service['base_price'] as num?)?.toDouble() ?? 0.0;
+          }
+        }
+      });
     }
+    
     return total;
   }
 
@@ -119,32 +254,41 @@ class _BookServicesPageState extends State<BookServicesPage> {
   Future<void> _fetchSlotData() async {
     setState(() => _isLoadingSlots = true);
     try {
-      final workersResponse = await MockDatabase.instance.client
-          .from('workers')
-          .select()
-          .build<List<Map<String, dynamic>>>();
+      final workersResponse =
+          await MockDatabase.instance.client
+              .from('workers')
+              .select()
+              .build<List<Map<String, dynamic>>>();
 
       // Filter APPROVED workers locally to avoid DB case-sensitivity issues
-      final workers = workersResponse.where((w) {
-         final status = w['status']?.toString().toUpperCase() ?? '';
-         return status == 'APPROVED' || status == 'ACTIVE';
-      }).toList();
+      final workers =
+          workersResponse.where((w) {
+            final status = w['status']?.toString().toUpperCase() ?? '';
+            return status == 'APPROVED' || status == 'ACTIVE';
+          }).toList();
 
       final selectedIso = _selectedDate.toUtc().toIso8601String().split('T')[0];
-      final nextDayIso = _selectedDate.add(const Duration(days: 1)).toUtc().toIso8601String().split('T')[0];
-      
-      final bookingsResponse = await MockDatabase.instance.client
-          .from('bookings')
-          .select() // Just select all to avoid column miss errors!
-          .gte('scheduled_at', selectedIso)
-          .lt('scheduled_at', nextDayIso)
-          .build<List<Map<String, dynamic>>>();
+      final nextDayIso =
+          _selectedDate
+              .add(const Duration(days: 1))
+              .toUtc()
+              .toIso8601String()
+              .split('T')[0];
+
+      final bookingsResponse =
+          await MockDatabase.instance.client
+              .from('bookings')
+              .select() // Just select all to avoid column miss errors!
+              .gte('scheduled_at', selectedIso)
+              .lt('scheduled_at', nextDayIso)
+              .build<List<Map<String, dynamic>>>();
 
       // Filter non-cancelled locally
-      final bookings = bookingsResponse.where((b) {
-         final status = b['status']?.toString().toUpperCase() ?? '';
-         return status != 'CANCELLED' && status != 'REJECTED';
-      }).toList();
+      final bookings =
+          bookingsResponse.where((b) {
+            final status = b['status']?.toString().toUpperCase() ?? '';
+            return status != 'CANCELLED' && status != 'REJECTED';
+          }).toList();
 
       if (mounted) {
         setState(() {
@@ -153,7 +297,7 @@ class _BookServicesPageState extends State<BookServicesPage> {
           _isLoadingSlots = false;
         });
       }
-    } catch(e) {
+    } catch (e) {
       debugPrint("Error fetching slot data: $e");
       if (mounted) {
         setState(() {
@@ -168,41 +312,95 @@ class _BookServicesPageState extends State<BookServicesPage> {
   Future<void> _fetchServices() async {
     try {
       // 1. Fetch core services
-      final servicesData = await MockDatabase.instance
-          .from('services')
-          .select()
-          .eq('is_active', true)
-          .order('name')
-          .build<List<Map<String, dynamic>>>();
+      final servicesData =
+          await MockDatabase.instance
+              .from('services')
+              .select()
+              .eq('is_active', true)
+              .order('name')
+              .build<List<Map<String, dynamic>>>();
 
       // 2. Fetch ALL pricing data to build the matrix
-      final pricingData = await MockDatabase.instance
-          .from('service_pricing')
-          .select()
-          .build<List<Map<String, dynamic>>>();
+      final pricingData =
+          await MockDatabase.instance
+              .from('service_pricing')
+              .select()
+              .build<List<Map<String, dynamic>>>();
 
       _pricingMatrix.clear();
       for (var p in pricingData) {
         final sId = p['service_id'] as String;
         final vType = (p['vehicle_type'] as String).toUpperCase();
         final price = (p['price'] as num).toDouble();
-        
+
         _pricingMatrix.putIfAbsent(sId, () => {});
         _pricingMatrix[sId]![vType] = price;
       }
-      
+
+      // 3. Ensure we include the 4 core services from our special pricing list
+      final Set<String> existingNames =
+          servicesData.map((s) => (s['name'] as String).toLowerCase()).toSet();
+      final List<String> specialNames = [
+        'Express Doorstep Wash',
+        'Interior Deep Cleaning',
+        'Exterior Rubbing & Waxing',
+        'Complete Car Spa',
+      ];
+
+      for (var name in specialNames) {
+        if (!existingNames.contains(name.toLowerCase())) {
+          servicesData.add({
+            'id': 'mock_${name.hashCode}',
+            'name': name,
+            'base_price': 1000.0,
+            'is_active': true,
+          });
+        }
+      }
+
       setState(() {
-        _availableServices = servicesData.map((s) {
-          // Use first car's type as the visual reference in the list for now
-          final firstType = (_selectedVehicleType ?? "SEDAN").toUpperCase();
-          final double finalPrice = _pricingMatrix[s['id']]?[firstType] ?? (s['base_price'] as num).toDouble();
-          
-          return {
-            ...s,
-            'price': finalPrice,
-            'icon': _getIconForService(s['name']),
-          };
-        }).toList();
+        _availableServices =
+            servicesData.map((s) {
+              // Use first car as visual reference
+              final firstVehicle =
+                  _selectedVehicleIds.isNotEmpty
+                      ? _savedVehicles.firstWhere(
+                        (v) => v['id'] == _selectedVehicleIds.first,
+                        orElse: () => <String, dynamic>{},
+                      )
+                      : <String, dynamic>{};
+              final category =
+                  firstVehicle.isNotEmpty
+                      ? _getCategoryForVehicle(firstVehicle)
+                      : 'CLASSIC';
+              final sName = s['name'] as String;
+
+              final special = _specialPricing[category]?[sName];
+              double finalPrice;
+              double? mrp;
+              String? saveText;
+
+              if (special != null) {
+                finalPrice = (special['offer'] as num).toDouble();
+                mrp = (special['mrp'] as num).toDouble();
+                saveText = "You Save ₹${special['save']}";
+              } else {
+                final vType =
+                    (firstVehicle['vehicle_type'] as String? ?? "SEDAN")
+                        .toUpperCase();
+                finalPrice =
+                    _pricingMatrix[s['id']]?[vType] ??
+                    (s['base_price'] as num).toDouble();
+              }
+
+              return {
+                ...s,
+                'price': finalPrice,
+                'mrp': mrp,
+                'saveText': saveText,
+                'icon': _getIconForService(sName),
+              };
+            }).toList();
         _isLoadingServices = false;
       });
     } catch (e) {
@@ -220,7 +418,9 @@ class _BookServicesPageState extends State<BookServicesPage> {
           if (mounted) {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => const CompleteProfilePage()),
+              MaterialPageRoute(
+                builder: (context) => const CompleteProfilePage(),
+              ),
             );
           }
         });
@@ -232,11 +432,12 @@ class _BookServicesPageState extends State<BookServicesPage> {
     final user = MockDatabase.instance.auth.currentUser;
     if (user != null) {
       try {
-        final data = await MockDatabase.instance
-            .from('vehicles')
-            .select()
-            .eq('user_id', user['id'])
-            .build();
+        final data =
+            await MockDatabase.instance
+                .from('vehicles')
+                .select()
+                .eq('user_id', user['id'])
+                .build();
         if (mounted) {
           setState(() {
             _savedVehicles = List<Map<String, dynamic>>.from(data);
@@ -255,7 +456,9 @@ class _BookServicesPageState extends State<BookServicesPage> {
     final parts = [
       addr['house_no'],
       addr['street'],
-      addr['landmark'] != null && addr['landmark'].isNotEmpty ? 'Near ${addr['landmark']}' : null,
+      addr['landmark'] != null && addr['landmark'].isNotEmpty
+          ? 'Near ${addr['landmark']}'
+          : null,
       addr['city'],
       addr['pincode'],
     ].where((e) => e != null && e.toString().isNotEmpty);
@@ -266,17 +469,21 @@ class _BookServicesPageState extends State<BookServicesPage> {
     final user = MockDatabase.instance.auth.currentUser;
     if (user != null) {
       try {
-        final data = await MockDatabase.instance
-            .from('addresses')
-            .select()
-            .eq('user_id', user['id'])
-            .build();
+        final data =
+            await MockDatabase.instance
+                .from('addresses')
+                .select()
+                .eq('user_id', user['id'])
+                .build();
         if (mounted) {
           setState(() {
             _savedAddresses = List<Map<String, dynamic>>.from(data);
             // Set default address if exists
             if (_savedAddresses.isNotEmpty && _addressController.text.isEmpty) {
-              final def = _savedAddresses.firstWhere((a) => a['is_default'] == true, orElse: () => _savedAddresses.first);
+              final def = _savedAddresses.firstWhere(
+                (a) => a['is_default'] == true,
+                orElse: () => _savedAddresses.first,
+              );
               _addressController.text = _formatAddress(def);
               _addressLabel = def['address_type'] ?? "Saved";
             }
@@ -296,34 +503,81 @@ class _BookServicesPageState extends State<BookServicesPage> {
 
   void _nextStep() {
     if (_currentStep < 3) {
+      if (_currentStep == 1) {
+        // Handle sequential vehicle service selection
+        final currentVId = _selectedVehicleIds.elementAt(_currentVehicleIndex);
+        _multiVehicleServiceSelections[currentVId] = Set.from(_selectedServiceIds);
+
+        if (_currentVehicleIndex < _selectedVehicleIds.length - 1) {
+          setState(() {
+            _currentVehicleIndex++;
+            _selectedServiceIds.clear();
+            // Restore selection if it already existed (e.g. from going back)
+            final nextVId = _selectedVehicleIds.elementAt(_currentVehicleIndex);
+            if (_multiVehicleServiceSelections.containsKey(nextVId)) {
+              _selectedServiceIds.addAll(_multiVehicleServiceSelections[nextVId]!);
+            }
+          });
+          return;
+        }
+      }
+
+      if (_currentStep == 0) {
+        _currentVehicleIndex = 0;
+        _selectedServiceIds.clear();
+        if (_selectedVehicleIds.isNotEmpty) {
+          final firstVId = _selectedVehicleIds.first;
+          if (_multiVehicleServiceSelections.containsKey(firstVId)) {
+            _selectedServiceIds.addAll(_multiVehicleServiceSelections[firstVId]!);
+          }
+        }
+      }
+
       setState(() => _currentStep++);
     } else if (_currentStep == 3) {
-      // Navigate to booking summary
+      // Finalize and Navigate to Summary
       if (_canContinue()) {
+        // Collect all services for all vehicles correctly
+        final List<Map<String, dynamic>> finalServices = [];
+        final Map<String, List<Map<String, dynamic>>> perVehicleServices = {};
+
+        for (var vId in _selectedVehicleIds) {
+          final sIds = _multiVehicleServiceSelections[vId] ?? {};
+          final v = _savedVehicles.firstWhere((v) => v['id'] == vId);
+          final vType = (v['vehicle_type'] as String?)?.toUpperCase() ?? "SEDAN";
+          final category = _getCategoryForVehicle(v);
+
+          for (var sId in sIds) {
+            final s = _availableServices.firstWhere((s) => s['id'] == sId);
+            final sName = s['name'] as String;
+            final special = _specialPricing[category]?[sName];
+            
+            double price;
+            if (special != null) {
+              price = (special['offer'] as num).toDouble();
+            } else {
+              price = _pricingMatrix[sId]?[vType] ?? (s['base_price'] as num).toDouble();
+            }
+            
+            final sData = {...s, 'price': price, 'vehicle_id': vId};
+            finalServices.add(sData);
+            perVehicleServices.putIfAbsent(vId, () => []).add(sData);
+          }
+        }
+
         Navigator.push(
           context,
           MaterialPageRoute(
             builder:
                 (context) => BookingSummaryPage(
-                  selectedServices:
-                      _availableServices
-                          .where((s) => _selectedServiceIds.contains(s['id']))
-                          .toList(),
+                  selectedServices: finalServices,
                   selectedVehicles: _savedVehicles.where((v) => _selectedVehicleIds.contains(v['id'])).toList(),
                   totalPrice: _totalPrice,
                   selectedDate: _selectedDate,
                   selectedTime: _selectedTime,
+                  vehicle: _savedVehicles.length == 1 ? _savedVehicles.first : (_savedVehicles.firstWhere((v) => v['id'] == _selectedVehicleIds.first, orElse: () => {})),
+                  addressLabel: _addressLabel ?? "Location",
                   addressText: _addressController.text,
-                  addressLabel: _addressLabel ?? "Selected Address",
-                  vehicle: {
-                    'id': _selectedVehicleId ?? '',
-                    'vehicle_type': _selectedVehicleType ?? 'SEDAN',
-                    'brand_name': _selectedVehicleBrand ?? '',
-                    'car_model': _selectedVehicleModel ?? '',
-                    'license': _selectedVehicleLicense ?? '',
-                  },
-                  latitude: _latitude,
-                  longitude: _longitude,
                 ),
           ),
         );
@@ -332,8 +586,27 @@ class _BookServicesPageState extends State<BookServicesPage> {
   }
 
   void _previousStep() {
-    if (_currentStep > 0) {
-      setState(() => _currentStep--);
+    if (_currentStep == 1 && _currentVehicleIndex > 0) {
+      setState(() {
+        _currentVehicleIndex--;
+        _selectedServiceIds.clear();
+        final prevVId = _selectedVehicleIds.elementAt(_currentVehicleIndex);
+        if (_multiVehicleServiceSelections.containsKey(prevVId)) {
+          _selectedServiceIds.addAll(_multiVehicleServiceSelections[prevVId]!);
+        }
+      });
+    } else if (_currentStep > 0) {
+      setState(() {
+        _currentStep--;
+        if (_currentStep == 1) {
+          _currentVehicleIndex = _selectedVehicleIds.length - 1;
+          _selectedServiceIds.clear();
+          final vId = _selectedVehicleIds.elementAt(_currentVehicleIndex);
+          if (_multiVehicleServiceSelections.containsKey(vId)) {
+            _selectedServiceIds.addAll(_multiVehicleServiceSelections[vId]!);
+          }
+        }
+      });
     } else {
       Navigator.pop(context);
     }
@@ -342,7 +615,7 @@ class _BookServicesPageState extends State<BookServicesPage> {
   bool _canContinue() {
     switch (_currentStep) {
       case 0: // Vehicle
-        return _selectedVehicleType != null;
+        return _selectedVehicleIds.isNotEmpty;
       case 1: // Services
         return _selectedServiceIds.isNotEmpty;
       case 2: // Schedule
@@ -400,22 +673,23 @@ class _BookServicesPageState extends State<BookServicesPage> {
           // Content
           Expanded(child: _buildStepContent()),
 
-          // Bottom Price Bar (only for Services step)
-          if (_currentStep == 1)
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, -5),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
+          // Bottom Bar
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, -5),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_currentStep > 0) ...[
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -438,51 +712,19 @@ class _BookServicesPageState extends State<BookServicesPage> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  buildPrimaryButton(
-                    text: "Continue",
-                    onTap: _canContinue() ? _nextStep : null,
-                  ),
                 ],
-              ),
-            )
-          else if (_currentStep == 0)
-            // Multi-Vehicle Continue
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, -5),
-                  ),
-                ],
-              ),
-              child: buildPrimaryButton(
-                text: "Continue with ${_selectedVehicleIds.length} Vehicles",
-                onTap: _selectedVehicleIds.isNotEmpty ? _nextStep : null,
-              ),
-            )
-          else
-            // Continue button for other steps (Schedule, Address)
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, -5),
-                  ),
-                ],
-              ),
-              child: buildPrimaryButton(
-                text: _currentStep == 3 ? "Review Summary" : "Continue",
-                onTap: _canContinue() ? _nextStep : null,
-              ),
+                buildPrimaryButton(
+                  text:
+                      _currentStep == 0
+                          ? "Continue with ${_selectedVehicleIds.length} Vehicles"
+                          : _currentStep == 3
+                          ? "Review Summary"
+                          : "Continue",
+                  onTap: _canContinue() ? _nextStep : null,
+                ),
+              ],
             ),
+          ),
         ],
       ),
     );
@@ -587,6 +829,7 @@ class _BookServicesPageState extends State<BookServicesPage> {
                   setState(() {
                     if (isSelected) {
                       _selectedVehicleIds.remove(vehicle['id']);
+                      _multiVehicleServiceSelections.remove(vehicle['id']);
                       if (_selectedVehicleIds.isEmpty) {
                         _selectedVehicleId = null;
                         _selectedVehicleType = null;
@@ -600,7 +843,7 @@ class _BookServicesPageState extends State<BookServicesPage> {
                       _selectedVehicleModel = vehicle['car_model'];
                       _selectedVehicleLicense = vehicle['license'];
                     }
-                    
+
                     // Refresh services to get pricing (using the first selected as reference for UI list)
                     if (_selectedVehicleType != null) {
                       _isLoadingServices = true;
@@ -660,7 +903,7 @@ class _BookServicesPageState extends State<BookServicesPage> {
                               vehicle['car_model'] != null &&
                                       vehicle['car_model'].toString().isNotEmpty
                                   ? vehicle['car_model'] // Show model if available
-                                  : (vehicle['name'] ?? 'Vehicle'), 
+                                  : (vehicle['name'] ?? 'Vehicle'),
                               style: const TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -761,7 +1004,8 @@ class _BookServicesPageState extends State<BookServicesPage> {
                   if (result is Map<String, dynamic>) {
                     // Result from select screen might be dynamic map
                     setState(() {
-                      _selectedVehicleId = result['id']; // ID from insert result
+                      _selectedVehicleId =
+                          result['id']; // ID from insert result
                       _selectedVehicleId = result['id'];
                       _selectedVehicleType = result['vehicle_type'];
                       _selectedVehicleBrand = result['brand_name'];
@@ -806,6 +1050,14 @@ class _BookServicesPageState extends State<BookServicesPage> {
   }
 
   Widget _buildServicesSelection() {
+    final currentVId = _selectedVehicleIds.isNotEmpty
+        ? _selectedVehicleIds.elementAt(_currentVehicleIndex)
+        : null;
+    final currentV =
+        currentVId != null
+            ? _savedVehicles.firstWhere((v) => v['id'] == currentVId, orElse: () => {})
+            : {};
+
     return _isLoadingServices
         ? const Center(child: CircularProgressIndicator(color: Color(0xFF01102B)))
         : SingleChildScrollView(
@@ -813,37 +1065,104 @@ class _BookServicesPageState extends State<BookServicesPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  "Choose Services",
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF01102B),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      "Choose Services",
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF01102B),
+                      ),
+                    ),
+                    if (_selectedVehicleIds.length > 1)
+                      Text(
+                        "${_currentVehicleIndex + 1} of ${_selectedVehicleIds.length}",
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                        ),
+                      ),
+                  ],
+                ),
+                if (currentV.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.grey[200]!),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withAlpha(10),
+                          blurRadius: 10,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.directions_car, color: Color(0xFF01102B)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "${currentV['brand_name']} ${currentV['car_model'] ?? ''}",
+                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                              ),
+                              Text(
+                                "License: ${currentV['license'] ?? 'N/A'}",
+                                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                ],
                 const SizedBox(height: 8),
-                const Text(
-                  "Select the services you want for your vehicle",
-                  style: TextStyle(fontSize: 14, color: Colors.grey),
-                ),
-                const SizedBox(height: 24),
                 if (_availableServices.isEmpty)
                   const Center(child: Text("No services available right now")),
                 ..._availableServices.map((s) {
+                  final sName = s['name'] as String;
+                  final category = currentV.isNotEmpty ? _getCategoryForVehicle(currentV as Map<String, dynamic>) : 'CLASSIC';
+                  final special = _specialPricing[category]?[sName];
+                  
+                  double displayPrice;
+                  double? displayMrp;
+                  String? displaySave;
+
+                  if (special != null) {
+                    displayPrice = (special['offer'] as num).toDouble();
+                    displayMrp = (special['mrp'] as num).toDouble();
+                    displaySave = "You Save ₹${special['save']}";
+                  } else {
+                    final vType = (currentV['vehicle_type'] as String?)?.toUpperCase() ?? "SEDAN";
+                    displayPrice = _pricingMatrix[s['id']]?[vType] ?? (s['base_price'] as num?)?.toDouble() ?? 1000.0;
+                  }
+
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: buildServiceTile(
-                      title: s['name'],
+                      title: sName,
                       icon: s['icon'],
-                      price: s['price'].toDouble(),
-                      checklist: _getChecklistForService(s['name']),
+                      price: displayPrice,
+                      mrp: displayMrp,
+                      saveText: displaySave,
+                      checklist: _getChecklistForService(sName),
                       categoryBadge: _getCategoryBadgeForVehicle(),
                       isSelected: _selectedServiceIds.contains(s['id']),
-                      onTap: () => setState(() {
-                        _selectedServiceIds.contains(s['id'])
-                            ? _selectedServiceIds.remove(s['id'])
-                            : _selectedServiceIds.add(s['id']);
-                      }),
+                      onTap:
+                          () => setState(() {
+                            _selectedServiceIds.contains(s['id'])
+                                ? _selectedServiceIds.remove(s['id'])
+                                : _selectedServiceIds.add(s['id']);
+                          }),
                     ),
                   );
                 }),
@@ -1028,128 +1347,157 @@ class _BookServicesPageState extends State<BookServicesPage> {
 
           // Time slots grid — 15-min intervals 6:00 AM to 9:00 PM
           // Past slots are greyed out; unavailable slots are shown greyed (not hidden)
-          _isLoadingSlots ? const Center(child: CircularProgressIndicator()) : Builder(builder: (context) {
-            if (_activeWorkers.isEmpty) {
-               return Container(
-                 padding: const EdgeInsets.all(16),
-                 decoration: BoxDecoration(
-                   color: Colors.red[50],
-                   borderRadius: BorderRadius.circular(12),
-                   border: Border.all(color: Colors.red[200]!),
-                 ),
-                 child: Row(
-                   children: [
-                     Icon(Icons.info_outline, color: Colors.red[700]),
-                     const SizedBox(width: 12),
-                     const Expanded(child: Text("Sorry, there are no active workers available today.", style: TextStyle(color: Colors.red))),
-                   ],
-                 ),
-               );
-            }
-            
-            final now = DateTime.now();
-            final isToday = _selectedDate.year == now.year &&
-                _selectedDate.month == now.month &&
-                _selectedDate.day == now.day;
-
-            // Generate all slots: 6:00 AM (360 min) to 9:00 PM (1260 min) in 15-min steps
-            final List<String> allSlots = [];
-            for (int totalMin = 360; totalMin <= 1260; totalMin += 15) {
-              final h = totalMin ~/ 60;
-              final m = totalMin % 60;
-              final period = h < 12 ? 'AM' : 'PM';
-              final displayH = h == 0 ? 12 : (h > 12 ? h - 12 : h);
-              allSlots.add(
-                '${displayH.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')} $period',
-              );
-            }
-
-            return Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: allSlots.map((time) {
-                final isSelected = _selectedTime == time;
-
-                // Determine if slot is in the past (only relevant for today)
-                bool isPast = false;
-                final parts = time.split(RegExp(r'[: ]'));
-                int h = int.parse(parts[0]);
-                final m = int.parse(parts[1]);
-                final isPM = parts[2] == 'PM';
-                if (isPM && h != 12) h += 12;
-                if (!isPM && h == 12) h = 0;
-                
-                if (isToday) {
-                  final slotMinutes = h * 60 + m;
-                  final nowMinutes = now.hour * 60 + now.minute;
-                  isPast = slotMinutes <= nowMinutes;
-                }
-                
-                final slotStart = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, h, m);
-                final slotEnd = slotStart.add(const Duration(hours: 1)); // 1 hour wash duration
-
-                // Evaluate overlap against ALL active workers
-                int availableWorkers = 0;
-                for (var worker in _activeWorkers) {
-                   bool workerFree = true;
-                   for (var b in _dayBookings) {
-                      if (b['worker_id'] == worker['id']) {
-                         if (b['scheduled_at'] == null) continue;
-                         final bStart = DateTime.parse(b['scheduled_at']).toLocal();
-                         final bEnd = bStart.add(const Duration(hours: 1));
-                         if (bStart.isBefore(slotEnd) && bEnd.isAfter(slotStart)) {
-                            workerFree = false;
-                            break;
-                         }
-                      }
-                   }
-                   if (workerFree) availableWorkers++;
-                }
-
-                final isDisabled = isPast || availableWorkers <= 0;
-
-                return GestureDetector(
-                  onTap: isDisabled
-                      ? null
-                      : () => setState(() => _selectedTime = time),
-                  child: Container(
-                    width: (MediaQuery.of(context).size.width - 64) / 3,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? const Color(0xFF01102B)
-                          : isDisabled
-                              ? Colors.grey[100]
-                              : Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isSelected
-                            ? const Color(0xFF01102B)
-                            : isDisabled
-                                ? Colors.grey[200]!
-                                : Colors.grey[300]!,
-                        width: 1,
+          _isLoadingSlots
+              ? const Center(child: CircularProgressIndicator())
+              : Builder(
+                builder: (context) {
+                  if (_activeWorkers.isEmpty) {
+                    return Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.red[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.red[200]!),
                       ),
-                    ),
-                    child: Center(
-                      child: Text(
-                        time,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: isSelected
-                              ? Colors.white
-                              : isDisabled
-                                  ? Colors.grey[400]
-                                  : const Color(0xFF01102B),
-                        ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.red[700]),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text(
+                              "Sorry, there are no active workers available today.",
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            );
-          }),
+                    );
+                  }
+
+                  final now = DateTime.now();
+                  final isToday =
+                      _selectedDate.year == now.year &&
+                      _selectedDate.month == now.month &&
+                      _selectedDate.day == now.day;
+
+                  // Generate all slots: 6:00 AM (360 min) to 9:00 PM (1260 min) in 15-min steps
+                  final List<String> allSlots = [];
+                  for (int totalMin = 360; totalMin <= 1260; totalMin += 15) {
+                    final h = totalMin ~/ 60;
+                    final m = totalMin % 60;
+                    final period = h < 12 ? 'AM' : 'PM';
+                    final displayH = h == 0 ? 12 : (h > 12 ? h - 12 : h);
+                    allSlots.add(
+                      '${displayH.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')} $period',
+                    );
+                  }
+
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children:
+                        allSlots.map((time) {
+                          final isSelected = _selectedTime == time;
+
+                          // Determine if slot is in the past (only relevant for today)
+                          bool isPast = false;
+                          final parts = time.split(RegExp(r'[: ]'));
+                          int h = int.parse(parts[0]);
+                          final m = int.parse(parts[1]);
+                          final isPM = parts[2] == 'PM';
+                          if (isPM && h != 12) h += 12;
+                          if (!isPM && h == 12) h = 0;
+
+                          if (isToday) {
+                            final slotMinutes = h * 60 + m;
+                            final nowMinutes = now.hour * 60 + now.minute;
+                            isPast = slotMinutes <= nowMinutes;
+                          }
+
+                          final slotStart = DateTime(
+                            _selectedDate.year,
+                            _selectedDate.month,
+                            _selectedDate.day,
+                            h,
+                            m,
+                          );
+                          final slotEnd = slotStart.add(
+                            const Duration(hours: 1),
+                          ); // 1 hour wash duration
+
+                          // Evaluate overlap against ALL active workers
+                          int availableWorkers = 0;
+                          for (var worker in _activeWorkers) {
+                            bool workerFree = true;
+                            for (var b in _dayBookings) {
+                              if (b['worker_id'] == worker['id']) {
+                                if (b['scheduled_at'] == null) continue;
+                                final bStart =
+                                    DateTime.parse(b['scheduled_at']).toLocal();
+                                final bEnd = bStart.add(
+                                  const Duration(hours: 1),
+                                );
+                                if (bStart.isBefore(slotEnd) &&
+                                    bEnd.isAfter(slotStart)) {
+                                  workerFree = false;
+                                  break;
+                                }
+                              }
+                            }
+                            if (workerFree) availableWorkers++;
+                          }
+
+                          final isDisabled = isPast || availableWorkers <= 0;
+
+                          return GestureDetector(
+                            onTap:
+                                isDisabled
+                                    ? null
+                                    : () =>
+                                        setState(() => _selectedTime = time),
+                            child: Container(
+                              width:
+                                  (MediaQuery.of(context).size.width - 64) / 3,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              decoration: BoxDecoration(
+                                color:
+                                    isSelected
+                                        ? const Color(0xFF01102B)
+                                        : isDisabled
+                                        ? Colors.grey[100]
+                                        : Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color:
+                                      isSelected
+                                          ? const Color(0xFF01102B)
+                                          : isDisabled
+                                          ? Colors.grey[200]!
+                                          : Colors.grey[300]!,
+                                  width: 1,
+                                ),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  time,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color:
+                                        isSelected
+                                            ? Colors.white
+                                            : isDisabled
+                                            ? Colors.grey[400]
+                                            : const Color(0xFF01102B),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                  );
+                },
+              ),
         ],
       ),
     );
@@ -1207,31 +1555,55 @@ class _BookServicesPageState extends State<BookServicesPage> {
         builder: (context) => const Center(child: CircularProgressIndicator()),
       );
 
-      Position position = await Geolocator.getCurrentPosition();
+      Position? position = await Geolocator.getLastKnownPosition();
+      
+      // If no last known position, or if we want a fresh one, get current position with timeout
+      position ??= await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 5),
+        ),
+      );
+
       List<Placemark> placemarks = await placemarkFromCoordinates(
         position.latitude,
         position.longitude,
-      );
+      ).timeout(const Duration(seconds: 5), onTimeout: () => []);
 
-      if (mounted) Navigator.pop(context); // Close loading
+      if (mounted) {
+        // Safe check to avoid popping multiple times or after context is gone
+        Navigator.pop(context); 
+      }
 
       if (placemarks.isNotEmpty) {
         Placemark place = placemarks[0];
-        String address =
-            "${place.street}, ${place.locality}, ${place.administrativeArea}, ${place.postalCode}";
+        // Build a more readable address
+        List<String> addressParts = [];
+        if (place.street != null && place.street!.isNotEmpty) addressParts.add(place.street!);
+        if (place.subLocality != null && place.subLocality!.isNotEmpty) addressParts.add(place.subLocality!);
+        if (place.locality != null && place.locality!.isNotEmpty) addressParts.add(place.locality!);
+        if (place.postalCode != null && place.postalCode!.isNotEmpty) addressParts.add(place.postalCode!);
+
+        String address = addressParts.join(', ');
+        
         setState(() {
-          _latitude = position.latitude;
-          _longitude = position.longitude;
+          _latitude = position!.latitude;
+          _longitude = position!.longitude;
           _addressLabel = "Current";
           _addressController.text = address;
         });
+      } else {
+        throw "Could not determine street address. Please type it manually.";
       }
     } catch (e) {
-      if (mounted) Navigator.pop(context); // Close loading
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error getting location: $e')));
+        if (Navigator.canPop(context)) Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Location Error: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
       }
     }
   }

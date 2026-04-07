@@ -43,8 +43,8 @@ class BookingSummaryPage extends StatelessWidget {
     );
 
     double baseTotal = totalPrice;
-    double fee = 199;
-    double tax = 20;
+    double fee = 0;
+    double tax = 0;
 
     if (isApartmentPlan && isCoveredWash) {
       baseTotal = 0;
@@ -108,8 +108,6 @@ class BookingSummaryPage extends StatelessWidget {
                       isApartmentPlan && isCoveredWash ? "Rs. 0" : "Rs. ${service['price']}",
                     ),
                   ),
-                  _buildPriceItem("Convenience Fee", "Rs. ${fee.toStringAsFixed(0)}"),
-                  _buildPriceItem("Tax", "Rs. ${tax.toStringAsFixed(0)}"),
 
                   if (isApartmentPlan) ...[
                     const Padding(
@@ -157,7 +155,7 @@ class BookingSummaryPage extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        "Total Amount",
+                        "Total Amount (Including GST)",
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
@@ -238,55 +236,58 @@ class BookingSummaryPage extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 24),
-                  const Text(
-                    "Vehicle",
-                    style: TextStyle(
+                  Text(
+                    selectedVehicles.length > 1 ? "Vehicles" : "Vehicle",
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
                       color: Color(0xFF01102B),
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.directions_car,
-                        color: Color(0xFF01102B),
-                        size: 20,
-                      ),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            vehicle['car_model'] != null &&
-                                    vehicle['car_model']!.isNotEmpty
-                                ? vehicle['car_model']!
-                                : "${vehicle['brand_name']} Vehicle",
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF01102B),
+                  ...selectedVehicles.map((v) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.directions_car,
+                          color: Color(0xFF01102B),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              v['car_model'] != null &&
+                                      v['car_model']!.isNotEmpty
+                                  ? v['car_model']!
+                                  : "${v['brand_name']} Vehicle",
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF01102B),
+                              ),
                             ),
-                          ),
-                          Text(
-                            [
-                              vehicle['brand_name'],
-                              vehicle['vehicle_type'],
-                              if (vehicle['license'] != null &&
-                                  vehicle['license']!.isNotEmpty)
-                                "•••• ${vehicle['license']!.substring(vehicle['license']!.length > 4 ? vehicle['license']!.length - 4 : 0)}",
-                            ].where((e) => e != null && e.isNotEmpty).join(" • "),
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey[600],
-                              fontWeight: FontWeight.w500,
+                            Text(
+                              [
+                                v['brand_name'],
+                                v['vehicle_type'],
+                                if (v['license'] != null &&
+                                    v['license']!.isNotEmpty)
+                                  "•••• ${v['license']!.substring(v['license']!.length > 4 ? v['license']!.length - 4 : 0)}",
+                              ].where((e) => e != null && e.isNotEmpty).join(" • "),
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey[600],
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  )),
                 ],
               ),
             ),

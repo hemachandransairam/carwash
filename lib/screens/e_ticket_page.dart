@@ -10,6 +10,7 @@ import 'dart:io';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'chat_page.dart';
 
 class ETicketPage extends StatelessWidget {
   final String? bookingId;
@@ -125,7 +126,7 @@ class ETicketPage extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 12),
-                            _buildWorkerCard(),
+                            _buildWorkerCard(context),
 
                             const SizedBox(height: 20),
 
@@ -330,7 +331,7 @@ class ETicketPage extends StatelessWidget {
     );
   }
 
-  Widget _buildWorkerCard() {
+  Widget _buildWorkerCard(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -343,8 +344,13 @@ class ETicketPage extends StatelessWidget {
           CircleAvatar(
             backgroundColor: Colors.white,
             radius: 20,
-            backgroundImage: worker?['profile_pic'] != null ? NetworkImage(worker!['profile_pic']) : null,
-            child: worker?['profile_pic'] == null ? const Icon(Icons.person, color: Colors.grey) : null,
+            backgroundImage: worker?['profile_pic'] != null
+                ? NetworkImage(worker!['profile_pic'])
+                : null,
+            child:
+                worker?['profile_pic'] == null
+                    ? const Icon(Icons.person, color: Colors.grey)
+                    : null,
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -353,7 +359,10 @@ class ETicketPage extends StatelessWidget {
               children: [
                 Text(
                   worker?['name'] ?? "Tom Holland", // Fallback for mock/preview
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
                 ),
                 Text(
                   worker?['phone'] ?? "WynkWash Team",
@@ -364,6 +373,52 @@ class ETicketPage extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+          // Msg Icon
+          IconButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ChatPage(
+                    worker: worker,
+                    bookingId: bookingId,
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(
+              Icons.chat_bubble_outline_rounded,
+              size: 18,
+              color: Color(0xFF01102B),
+            ),
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.white,
+              padding: const EdgeInsets.all(8),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Call Icon
+          IconButton(
+            onPressed: () {
+              // Simulate or jump to Dialer
+              // In production: launchUrl(Uri.parse('tel:${worker?['phone']}'));
+            },
+            icon: const Icon(
+              Icons.call_outlined,
+              size: 18,
+              color: Color(0xFF01102B),
+            ),
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.white,
+              padding: const EdgeInsets.all(8),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ],

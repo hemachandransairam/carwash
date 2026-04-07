@@ -7,6 +7,9 @@ import 'profile_page.dart';
 import 'notification_page.dart';
 import 'package:modal_bottom_sheet/modal_bottom_sheet.dart';
 import 'package:intl/intl.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
+import 'chat_page.dart';
 import 'e_ticket_page.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -212,12 +215,43 @@ class _HomeContentState extends State<HomeContent> {
       }
     });
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_hasShownAddressSelection) {
-        _showAddressSelection();
+    _initializeLocation();
+  }
+
+  Future<void> _initializeLocation() async {
+    final user = MockDatabase.instance.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final response = await MockDatabase.instance
+          .from('addresses')
+          .select('house_no, street, city')
+          .eq('user_id', user['id'])
+          .order('created_at', ascending: false)
+          .limit(1)
+          .build<List<Map<String, dynamic>>>();
+
+      if (response.isNotEmpty) {
+        final r = response.first;
+        final display =
+            "${r['house_no'] ?? ''} ${r['street'] ?? r['city'] ?? ''}".trim();
+        if (mounted) {
+          setState(() {
+            _currentAddress = display;
+          });
+        }
         _hasShownAddressSelection = true;
+      } else {
+        if (!_hasShownAddressSelection) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _showAddressSelection();
+            _hasShownAddressSelection = true;
+          });
+        }
       }
-    });
+    } catch (e) {
+      debugPrint("Error initializing location: $e");
+    }
   }
 
   // _fetchActiveBooking is removed as we use StreamBuilder
@@ -380,11 +414,60 @@ class _HomeContentState extends State<HomeContent> {
                             "Use Current Location",
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
-                          onTap: () {
-                            setState(
-                              () => _currentAddress = "Current Location",
-                            );
-                            Navigator.pop(context);
+                          onTap: () async {
+                            try {
+                              // Show status
+                              setModalState(() {
+                                _currentAddress = "Locating...";
+                              });
+
+                              // 1. Check Permissions
+                              bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+                              if (!serviceEnabled) throw 'Location services are disabled.';
+
+                              LocationPermission permission = await Geolocator.checkPermission();
+                              if (permission == LocationPermission.denied) {
+                                permission = await Geolocator.requestPermission();
+                                if (permission == LocationPermission.denied) throw 'Permission denied';
+                              }
+                              if (permission == LocationPermission.deniedForever) throw 'Permission permanently denied';
+
+                              // 2. Get Position
+                              Position? position = await Geolocator.getLastKnownPosition();
+                              position ??= await Geolocator.getCurrentPosition(
+                                locationSettings: const LocationSettings(
+                                  accuracy: LocationAccuracy.high,
+                                  timeLimit: Duration(seconds: 5),
+                                ),
+                              );
+
+                              // 3. Geocode
+                              List<Placemark> placemarks = await placemarkFromCoordinates(
+                                position.latitude,
+                                position.longitude,
+                              ).timeout(const Duration(seconds: 5), onTimeout: () => []);
+
+                              if (placemarks.isNotEmpty) {
+                                Placemark p = placemarks[0];
+                                List<String> parts = [];
+                                if (p.street?.isNotEmpty == true) parts.add(p.street!);
+                                if (p.subLocality?.isNotEmpty == true) parts.add(p.subLocality!);
+                                if (p.locality?.isNotEmpty == true) parts.add(p.locality!);
+                                String addr = parts.join(', ');
+
+                                setState(() => _currentAddress = addr);
+                                if (mounted) Navigator.pop(context);
+                                await _saveNewAddress(addr);
+                              } else {
+                                throw "Could not resolve address.";
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text("Error: $e"), backgroundColor: Colors.redAccent)
+                                );
+                              }
+                            }
                           },
                         ),
                       ],
@@ -420,6 +503,32 @@ class _HomeContentState extends State<HomeContent> {
     } catch (e) {
       debugPrint("Error saving address: $e");
     }
+  }
+
+  Widget _buildShortcutIcon(IconData icon, Map<String, dynamic> booking) {
+    return GestureDetector(
+      onTap: () {
+        if (icon == Icons.chat_bubble_outline) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ChatPage(bookingId: booking['id']),
+            ),
+          );
+        } else {
+          // Handle Call (using the logic we'll add later or just a placeholder)
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF6F6F6),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey[200]!),
+        ),
+        child: Icon(icon, size: 18, color: const Color(0xFF01102B)),
+      ),
+    );
   }
 
   @override
@@ -865,15 +974,43 @@ class _HomeContentState extends State<HomeContent> {
                                     ? [addr['house_no'], addr['street'], addr['city']].where((e) => e != null && e.toString().isNotEmpty).join(", ")
                                     : "Fetching location...";
                                   return Expanded(
-                                    child: Text(
-                                      addrText,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w500,
-                                        fontSize: 13,
-                                        color: Colors.grey[700],
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          addrText,
+                                          style: TextStyle(
+                                            height: 1.4,
+                                            fontSize: 13,
+                                            color: Colors.grey[600],
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        // Quick Contact Row
+                                        if (activeBooking!['status'].toString().toUpperCase() != 'PENDING' &&
+                                            activeBooking['status'].toString().toUpperCase() != 'CANCELLED')
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: 16),
+                                            child: Row(
+                                              children: [
+                                                const Spacer(),
+                                                // Msg Icon
+                                                _buildShortcutIcon(
+                                                  Icons.chat_bubble_outline,
+                                                  activeBooking!,
+                                                ),
+                                                const SizedBox(width: 12),
+                                                // Call Icon
+                                                _buildShortcutIcon(
+                                                  Icons.call,
+                                                  activeBooking!,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                      ],
                                     ),
                                   );
                                 }
