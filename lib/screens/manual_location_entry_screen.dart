@@ -114,7 +114,7 @@ class _ManualLocationEntryScreenState extends State<ManualLocationEntryScreen> {
               'city': details['city'] ?? 'Unknown',
               'state': details['state'] ?? 'Unknown',
               'pincode': details['pincode'] ?? '000000',
-              'address_type': 'Home',
+              'address_type': 'HOME',
               'is_default': true,
               'latitude': 0, // Mock lat/lng for now
               'longitude': 0,

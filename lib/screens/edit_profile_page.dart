@@ -86,7 +86,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'city': _cityController.text,
         'state': 'Manual', // Default
         'pincode': '000000', // Default
-        'address_type': 'Home',
+        'address_type': 'HOME',
         'is_default': true,
       }).build<void>();
 
