@@ -33,13 +33,16 @@ class BookingSummaryPage extends StatelessWidget {
   Widget build(BuildContext context) {
     // 1. Fetch user to check for Apartment Plan constraints
     final user = MockDatabase.instance.auth.currentUser;
-    final bool isApartmentPlan = user?['subscription_tier'] == 'APARTMENT_PLAN' || user?['is_apartment_resident'] == true;
-    
+    final bool isApartmentPlan =
+        user?['subscription_tier'] == 'APARTMENT_PLAN' ||
+        user?['is_apartment_resident'] == true;
+
     // We assume if it's explicitly a plan wash, it zeroes out
-    final bool isCoveredWash = selectedServices.any((s) => 
-        s['name'].toString().toLowerCase().contains('spray wash') || 
-        s['name'].toString().toLowerCase().contains('foam wash plan') ||
-        s['name'].toString().toLowerCase().contains('group plan')
+    final bool isCoveredWash = selectedServices.any(
+      (s) =>
+          s['name'].toString().toLowerCase().contains('spray wash') ||
+          s['name'].toString().toLowerCase().contains('foam wash plan') ||
+          s['name'].toString().toLowerCase().contains('group plan'),
     );
 
     double baseTotal = totalPrice;
@@ -105,7 +108,9 @@ class BookingSummaryPage extends StatelessWidget {
                   ...selectedServices.map(
                     (service) => _buildPriceItem(
                       service['name'],
-                      isApartmentPlan && isCoveredWash ? "Rs. 0" : "Rs. ${service['price']}",
+                      isApartmentPlan && isCoveredWash
+                          ? "Rs. 0"
+                          : "Rs. ${service['price']}",
                     ),
                   ),
 
@@ -245,49 +250,53 @@ class BookingSummaryPage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  ...selectedVehicles.map((v) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.directions_car,
-                          color: Color(0xFF01102B),
-                          size: 20,
-                        ),
-                        const SizedBox(width: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              v['car_model'] != null &&
-                                      v['car_model']!.isNotEmpty
-                                  ? v['car_model']!
-                                  : "${v['brand_name']} Vehicle",
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF01102B),
+                  ...selectedVehicles.map(
+                    (v) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.directions_car,
+                            color: Color(0xFF01102B),
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                v['car_model'] != null &&
+                                        v['car_model']!.isNotEmpty
+                                    ? v['car_model']!
+                                    : "${v['brand_name']} Vehicle",
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF01102B),
+                                ),
                               ),
-                            ),
-                            Text(
-                              [
-                                v['brand_name'],
-                                v['vehicle_type'],
-                                if (v['license'] != null &&
-                                    v['license']!.isNotEmpty)
-                                  "•••• ${v['license']!.substring(v['license']!.length > 4 ? v['license']!.length - 4 : 0)}",
-                              ].where((e) => e != null && e.isNotEmpty).join(" • "),
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey[600],
-                                fontWeight: FontWeight.w500,
+                              Text(
+                                [
+                                      v['brand_name'],
+                                      v['vehicle_type'],
+                                      if (v['license'] != null &&
+                                          v['license']!.isNotEmpty)
+                                        "•••• ${v['license']!.substring(v['license']!.length > 4 ? v['license']!.length - 4 : 0)}",
+                                    ]
+                                    .where((e) => e != null && e.isNotEmpty)
+                                    .join(" • "),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey[600],
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ],
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  )),
+                  ),
                 ],
               ),
             ),
@@ -356,7 +365,7 @@ class BookingSummaryPage extends StatelessWidget {
                           selectedServices
                               .map((s) => s['name'] as String)
                               .toList(),
-                      selectedServiceIds: 
+                      selectedServiceIds:
                           selectedServices
                               .map((s) => s['id'] as String)
                               .toList(),

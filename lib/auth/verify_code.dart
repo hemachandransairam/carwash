@@ -2,8 +2,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/services/auth_service.dart';
+import '../core/services/mock_database.dart';
 import 'complete_profile.dart';
 import '../screens/home_screen.dart';
+import '../screens/cab_owner/cab_owner_home_screen.dart';
 import 'dart:async';
 
 class VerifyCodePage extends StatefulWidget {
@@ -72,19 +74,28 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
     setState(() => _isLoading = true);
     try {
       if (widget.isSignUp) {
-        // Register the new user
+        // Try register — but if user already exists in DB (e.g. admin pre-registered
+        // a CAB_OWNER), verifyOtp internally handles it as login and preserves the role
         await AuthService().register(
           name: '',
           email: '',
           phone: widget.phoneNumber,
           otp: otp,
-          role: 'CUSTOMER',
+          role: 'USER',
         );
 
         if (mounted) {
+          final role = MockDatabase.instance.auth.currentUser?['role']
+                  ?.toString()
+                  .toUpperCase() ?? 'USER';
+
           Navigator.pushAndRemoveUntil(
             context,
-            MaterialPageRoute(builder: (context) => const CompleteProfilePage()),
+            MaterialPageRoute(
+              builder: (context) => role == 'CAB_OWNER'
+                  ? const CabOwnerHomeScreen()
+                  : const CompleteProfilePage(),
+            ),
             (route) => false,
           );
         }
@@ -94,12 +105,23 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
         
         if (mounted) {
           final isProfileComplete = user['name'] != null && user['name'].toString().isNotEmpty;
-          
+          final role = MockDatabase.instance.auth.currentUser?['role']
+                  ?.toString()
+                  .toUpperCase() ?? 'USER';
+
+          Widget destination;
+          if (role == 'CAB_OWNER') {
+            // Cab owners go directly to fleet dashboard regardless of profile completeness
+            destination = const CabOwnerHomeScreen();
+          } else if (!isProfileComplete) {
+            destination = const CompleteProfilePage();
+          } else {
+            destination = const HomeScreen();
+          }
+
           Navigator.pushAndRemoveUntil(
             context,
-            MaterialPageRoute(
-              builder: (context) => isProfileComplete ? const HomeScreen() : const CompleteProfilePage(),
-            ),
+            MaterialPageRoute(builder: (context) => destination),
             (route) => false,
           );
         }

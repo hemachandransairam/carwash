@@ -2,6 +2,7 @@ import "package:flutter/material.dart";
 import "package:google_fonts/google_fonts.dart";
 import "auth/login.dart";
 import "screens/home_screen.dart";
+import "screens/cab_owner/cab_owner_home_screen.dart";
 import "core/services/mock_database.dart";
 
 class App extends StatelessWidget {
@@ -21,6 +22,13 @@ class App extends StatelessWidget {
         valueListenable: MockDatabase.instance.auth.isLoggedIn,
         builder: (context, isLoggedIn, child) {
           if (isLoggedIn) {
+            final role = MockDatabase.instance.auth.currentUser?['role']
+                    ?.toString()
+                    .toUpperCase() ??
+                'USER';
+            if (role == 'CAB_OWNER') {
+              return const CabOwnerHomeScreen();
+            }
             return const HomeScreen();
           }
           return const LoginPage();

@@ -11,7 +11,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'chat_page.dart';
 import 'e_ticket_page.dart';
-import 'ongoing_service_page.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -170,9 +169,7 @@ class _HomeContentState extends State<HomeContent> {
   Timer? _carouselTimer;
   // _isLoading is used for cancel action indication
   bool _isLoading = false;
-  late final Stream<List<Map<String, dynamic>>> _activeOrderStream;
-  StreamSubscription<List<Map<String, dynamic>>>? _activeOrderSub;
-  String? _autoNavigatedBookingId;
+  late Future<List<Map<String, dynamic>>> _activeOrderFuture;
 
   String _currentAddress = "Select Location";
 
@@ -196,35 +193,13 @@ class _HomeContentState extends State<HomeContent> {
   void initState() {
     super.initState();
     final user = MockDatabase.instance.auth.currentUser;
-    _activeOrderStream = MockDatabase.instance
+    _activeOrderFuture = MockDatabase.instance
         .from('bookings')
-        .stream(primaryKey: ['id'])
+        .select()
         .eq('user_id', user?['id'] ?? '')
         .order('created_at', ascending: false)
-        .limit(5) as Stream<List<Map<String, dynamic>>>;
-
-    _activeOrderSub = _activeOrderStream.listen((bookings) {
-      if (!mounted) return;
-      for (final b in bookings) {
-        final status = (b['status'] as String? ?? '').toUpperCase();
-        if (status == 'IN_PROGRESS') {
-          if (_autoNavigatedBookingId != b['id']) {
-            _autoNavigatedBookingId = b['id'];
-            // PostFrameCallback ensures we don't try to navigate during a build phase if this triggers fast
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => OngoingServicePage(booking: b),
-                  ),
-                );
-              }
-            });
-          }
-        }
-      }
-    });
+        .limit(5)
+        .build<List<Map<String, dynamic>>>();
 
     // Start at a large index in the middle for circular scrolling simulation
     _currentBannerPage = _infinitePageCount ~/ 2;
@@ -284,7 +259,6 @@ class _HomeContentState extends State<HomeContent> {
 
   @override
   void dispose() {
-    _activeOrderSub?.cancel();
     _carouselTimer?.cancel();
     _pageController.dispose();
     super.dispose();
@@ -442,6 +416,8 @@ class _HomeContentState extends State<HomeContent> {
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                           onTap: () async {
+                            final nav = Navigator.of(context);
+                            final messenger = ScaffoldMessenger.of(context);
                             try {
                               // Show status
                               setModalState(() {
@@ -483,14 +459,14 @@ class _HomeContentState extends State<HomeContent> {
                                 String addr = parts.join(', ');
 
                                 setState(() => _currentAddress = addr);
-                                if (mounted) Navigator.pop(context);
+                                if (mounted) nav.pop();
                                 await _saveNewAddress(addr);
                               } else {
                                 throw "Could not resolve address.";
                               }
                             } catch (e) {
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
+                                messenger.showSnackBar(
                                   SnackBar(content: Text("Error: $e"), backgroundColor: Colors.redAccent)
                                 );
                               }
@@ -793,10 +769,10 @@ class _HomeContentState extends State<HomeContent> {
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Icon(Icons.calendar_month, color: Colors.white),
-                    SizedBox(width: 12),
-                    Text(
+                  children: [
+                    const Icon(Icons.calendar_month, color: Colors.white),
+                    const SizedBox(width: 12),
+                    const Text(
                       "Book a Service",
                       style: TextStyle(
                         fontSize: 16,
@@ -812,8 +788,8 @@ class _HomeContentState extends State<HomeContent> {
           const SizedBox(height: 24),
 
           // Active Orders Section
-          StreamBuilder<List<Map<String, dynamic>>>(
-            stream: _activeOrderStream,
+          FutureBuilder<List<Map<String, dynamic>>>(
+            future: _activeOrderFuture,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const SizedBox.shrink();
@@ -829,7 +805,7 @@ class _HomeContentState extends State<HomeContent> {
                 activeBooking = allBookings.firstWhere(
                   (b) {
                     final status = (b['status'] as String? ?? '').toUpperCase();
-                    return status == 'ASSIGNED' || status == 'CONFIRMED' || status == 'PENDING';
+                    return status == 'ASSIGNED' || status == 'CREATED' || status == 'IN_PROGRESS';
                   },
                   orElse: () => {},
                 );
@@ -935,7 +911,7 @@ class _HomeContentState extends State<HomeContent> {
                                 ),
                                 decoration: BoxDecoration(
                                   color:
-                                      (activeBooking['status'].toString().toUpperCase() == 'PENDING')
+                                      (activeBooking['status'].toString().toUpperCase() == 'CREATED')
                                           ? const Color(0xFFFFF4E5)
                                           : const Color(0xFFE8F5E9),
                                   borderRadius: BorderRadius.circular(20),
@@ -947,7 +923,7 @@ class _HomeContentState extends State<HomeContent> {
                                     fontSize: 12,
                                     fontWeight: FontWeight.w700,
                                     color:
-                                        (activeBooking['status'].toString().toUpperCase() == 'PENDING')
+                                        (activeBooking['status'].toString().toUpperCase() == 'CREATED')
                                             ? const Color(0xFFFF9800)
                                             : const Color(0xFF4CAF50),
                                   ),
@@ -1016,7 +992,7 @@ class _HomeContentState extends State<HomeContent> {
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                         // Quick Contact Row
-                                        if (activeBooking!['status'].toString().toUpperCase() != 'PENDING' &&
+                                        if (activeBooking!['status'].toString().toUpperCase() != 'CREATED' &&
                                             activeBooking['status'].toString().toUpperCase() != 'CANCELLED')
                                           Padding(
                                             padding: const EdgeInsets.only(top: 16),
@@ -1026,13 +1002,13 @@ class _HomeContentState extends State<HomeContent> {
                                                 // Msg Icon
                                                 _buildShortcutIcon(
                                                   Icons.chat_bubble_outline,
-                                                  activeBooking!,
+                                                  activeBooking,
                                                 ),
                                                 const SizedBox(width: 12),
                                                 // Call Icon
                                                 _buildShortcutIcon(
                                                   Icons.call,
-                                                  activeBooking!,
+                                                  activeBooking,
                                                 ),
                                               ],
                                             ),
@@ -1124,8 +1100,8 @@ class _HomeContentState extends State<HomeContent> {
             ),
           ),
           const SizedBox(height: 16),
-            StreamBuilder<List<Map<String, dynamic>>>(
-            stream: _activeOrderStream,
+            FutureBuilder<List<Map<String, dynamic>>>(
+            future: _activeOrderFuture,
             builder: (context, snapshot) {
               final allBookings = snapshot.data ?? [];
               final ongoingBookings = allBookings.where((b) {
@@ -1179,13 +1155,7 @@ class _HomeContentState extends State<HomeContent> {
                   return Padding(
                     padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8),
                     child: GestureDetector(
-                      onTap: () {
-                        if (statusStr == 'IN_PROGRESS') {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => OngoingServicePage(booking: booking)));
-                        } else {
-                          _navigateToTicket(booking);
-                        }
-                      },
+                      onTap: () => _navigateToTicket(booking),
                       child: Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(

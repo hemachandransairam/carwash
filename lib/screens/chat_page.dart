@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/services/mock_database.dart';
 
 class ChatPage extends StatefulWidget {
   final Map<String, dynamic>? worker;
@@ -13,29 +15,36 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage> {
   final TextEditingController _messageController = TextEditingController();
-  final List<Map<String, dynamic>> _messages = [
-    {
-      'is_me': false,
-      'text': 'Hello! I am assigned to your car wash. I will arrive in 10 minutes.',
-      'time': DateTime.now().subtract(const Duration(minutes: 5)),
-    },
-    {
-      'is_me': true,
-      'text': 'Great! Please use the back entrance.',
-      'time': DateTime.now().subtract(const Duration(minutes: 2)),
-    },
-  ];
 
-  void _sendMessage() {
-    if (_messageController.text.trim().isEmpty) return;
-    setState(() {
-      _messages.add({
-        'is_me': true,
-        'text': _messageController.text.trim(),
-        'time': DateTime.now(),
+  Stream<List<Map<String, dynamic>>> get _messageStream =>
+      MockDatabase.instance.client
+          .from('messages')
+          .stream(primaryKey: ['id'])
+          .eq('booking_id', widget.bookingId ?? '')
+          .order('created_at', ascending: true);
+
+  Future<void> _sendMessage() async {
+    final text = _messageController.text.trim();
+    if (text.isEmpty || widget.bookingId == null) return;
+
+    final user = MockDatabase.instance.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      await MockDatabase.instance.client.from('messages').insert({
+        'booking_id': widget.bookingId,
+        'sender_id': user['id'],
+        'text': text,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
       });
       _messageController.clear();
-    });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Failed to send: $e"), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
   @override
@@ -85,12 +94,51 @@ class _ChatPageState extends State<ChatPage> {
       body: Column(
         children: [
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(20),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final msg = _messages[index];
-                return _buildMessageBubble(msg);
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _messageStream,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                
+                if (snapshot.hasError) {
+                  return Center(child: Text("Error: ${snapshot.error}"));
+                }
+
+                final messages = snapshot.data ?? [];
+                
+                if (messages.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey[200]),
+                        const SizedBox(height: 16),
+                        Text(
+                          "No messages yet.\nSay hello to your technician!",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.all(20),
+                  itemCount: messages.length,
+                  itemBuilder: (context, index) {
+                    final msg = messages[index];
+                    final currentUserId = MockDatabase.instance.auth.currentUser?['id'];
+                    final isMe = msg['sender_id'] == currentUserId;
+                    
+                    return _buildMessageBubble({
+                      ...msg,
+                      'is_me': isMe,
+                      'time': DateTime.parse(msg['created_at']).toLocal(),
+                    });
+                  },
+                );
               },
             ),
           ),

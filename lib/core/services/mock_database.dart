@@ -192,28 +192,56 @@ class MockAuth {
       }
       
       final data = jsonDecode(loginRes.body);
-      
-      // Ensure only USERs can log into this app
-      final String userRole = data['role']?.toString().toUpperCase() ?? 'USER';
-      if (userRole != 'USER') {
+
+      // Role from Edge Function (may not reflect admin-set role in users table)
+      final String edgeRole = data['role']?.toString().toUpperCase() ?? 'USER';
+
+      // Try to fetch full profile from DB — use user_id from Edge Function
+      // to avoid phone format mismatch issues
+      final String userId = data['user_id']?.toString() ?? '';
+      final profile = userId.isNotEmpty
+          ? await Supabase.instance.client
+              .from('users')
+              .select()
+              .eq('id', userId)
+              .maybeSingle()
+          : await Supabase.instance.client
+              .from('users')
+              .select()
+              .eq('phone', cleanPhone)
+              .maybeSingle();
+
+      // Always trust the role from the users table (set by admin)
+      // Fall back to Edge Function role only if profile not found
+      String resolvedRole = profile != null
+          ? (profile['role']?.toString().toUpperCase() ?? edgeRole)
+          : edgeRole;
+
+      // Also check cab_owners table as a safety net
+      if (resolvedRole != 'CAB_OWNER' && profile != null) {
+        final cabOwnerEntry = await Supabase.instance.client
+            .from('cab_owners')
+            .select('id')
+            .eq('user_id', profile['id'])
+            .maybeSingle();
+        if (cabOwnerEntry != null) {
+          resolvedRole = 'CAB_OWNER';
+        }
+      }
+
+      // Block non-customer roles (EMPLOYEE, ADMIN, etc.)
+      if (resolvedRole != 'USER' && resolvedRole != 'CAB_OWNER') {
         throw Exception("This account is not a customer account. Please use the relevant app.");
       }
-      
-      // Try to fetch full profile from DB
-      final profile = await Supabase.instance.client
-          .from('users')
-          .select()
-          .eq('phone', cleanPhone)
-          .maybeSingle();
 
       if (profile != null) {
-        _sessionUser = {...profile, 'role': userRole};
+        _sessionUser = {...profile, 'role': resolvedRole};
       } else {
         _sessionUser = {
-          'id': data['user_id'], 
-          'phone': cleanPhone, 
-          'is_new': false, 
-          'role': userRole
+          'id': data['user_id'],
+          'phone': cleanPhone,
+          'is_new': false,
+          'role': resolvedRole
         };
       }
     } else {

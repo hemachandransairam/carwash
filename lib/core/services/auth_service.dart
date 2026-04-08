@@ -39,13 +39,14 @@ class AuthService {
     String role = 'CUSTOMER',
   }) async {
     await _auth.verifyOtp(phone: phone, token: otp, type: null);
-    // After verify, we might want to update the profile with name/email
+    // After verify, update profile but NEVER overwrite role resolved from DB
     if (_auth.currentUser != null) {
+      final resolvedRole = _auth.currentUser!['role']?.toString() ?? role;
       _auth.updateSessionUser({
         ..._auth.currentUser!,
         'name': name,
         'email': email,
-        'role': role,
+        'role': resolvedRole, // keep DB role, don't overwrite with 'CUSTOMER'
       });
     }
     return _auth.currentUser ?? {};

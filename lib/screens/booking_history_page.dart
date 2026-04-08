@@ -72,19 +72,32 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
         body:
             user == null
                 ? const Center(child: Text("Please login to view history"))
-                : StreamBuilder<List<Map<String, dynamic>>>(
-                  stream: MockDatabase.instance
+                : FutureBuilder<List<Map<String, dynamic>>>(
+                  future: MockDatabase.instance
                       .from('bookings')
-                      .stream(primaryKey: ['id'])
+                      .select()
                       .eq('user_id', user['id'])
-                      .order('created_at', ascending: false),
+                      .order('created_at', ascending: false)
+                      .build<List<Map<String, dynamic>>>(),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());
                     }
 
                     if (snapshot.hasError) {
-                      return Center(child: Text("Error: ${snapshot.error}"));
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text("Failed to load history"),
+                            const SizedBox(height: 16),
+                            ElevatedButton(
+                              onPressed: () => setState(() {}),
+                              child: const Text("Retry"),
+                            ),
+                          ],
+                        ),
+                      );
                     }
 
                     final bookings = snapshot.data ?? [];
@@ -453,21 +466,32 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    ...["Change of plans", "Found better price", "Worker late", "Scheduling conflict"].map((r) => 
-                      RadioListTile<String>(
-                        title: Text(r, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                        value: r,
-                        groupValue: currentReason,
-                        activeColor: const Color(0xFF01102B),
-                        onChanged: (val) => setState(() { currentReason = val; showTextField = false; }),
-                      )
-                    ),
-                    RadioListTile<String>(
-                      title: const Text("Other", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                      value: "Other",
-                      groupValue: currentReason,
-                      activeColor: const Color(0xFF01102B),
-                      onChanged: (val) => setState(() { currentReason = val; showTextField = true; }),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ...["Change of plans", "Found better price", "Worker late", "Scheduling conflict"].map((r) =>
+                          RadioListTile<String>(
+                            title: Text(r, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                            value: r,
+                            groupValue: currentReason,
+                            onChanged: (val) => setState(() {
+                              currentReason = val;
+                              showTextField = val == "Other";
+                            }),
+                            activeColor: const Color(0xFF01102B),
+                          )
+                        ),
+                        RadioListTile<String>(
+                          title: const Text("Other", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                          value: "Other",
+                          groupValue: currentReason,
+                          onChanged: (val) => setState(() {
+                            currentReason = val;
+                            showTextField = val == "Other";
+                          }),
+                          activeColor: const Color(0xFF01102B),
+                        ),
+                      ],
                     ),
                     if (showTextField)
                       Padding(

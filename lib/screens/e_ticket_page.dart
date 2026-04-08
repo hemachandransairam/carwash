@@ -11,6 +11,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'chat_page.dart';
+import '../core/services/mock_database.dart';
+import 'cab_owner/cab_owner_home_screen.dart';
 
 class ETicketPage extends StatelessWidget {
   final String? bookingId;
@@ -190,11 +192,20 @@ class ETicketPage extends StatelessWidget {
               buildPrimaryButton(
                 text: "Continue",
                 onTap: () {
-                  // Navigate to Home screen and clear the stack
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (context) => const HomeScreen()),
-                    (route) => false,
-                  );
+                  final user = MockDatabase.instance.auth.currentUser;
+                  final role = user?['role']?.toString().toUpperCase() ?? 'USER';
+
+                  if (role == 'CAB_OWNER') {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (context) => const CabOwnerHomeScreen()),
+                      (route) => false,
+                    );
+                  } else {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (context) => const HomeScreen()),
+                      (route) => false,
+                    );
+                  }
                 },
               ),
               const SizedBox(height: 12),

@@ -84,16 +84,32 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
         final String workerTableId = worker['id']; // This is what bookings.worker_id references
         final String userId = worker['user_id'];
 
+        // 3. Confirm worker account exists in users table and has correct role
+        // This ensures only those specifically assigned as workers are picked
+        final userDetails = await MockDatabase.instance.client
+            .from('users')
+            .select()
+            .eq('id', userId)
+            .maybeSingle()
+            .build<Map<String, dynamic>?>();
+
+        if (userDetails == null) continue;
+        
+        final role = userDetails['role']?.toString().toUpperCase() ?? 'USER';
+        if (role != 'WORKER' && role != 'WORKERS' && role != 'TECHNICIAN' && role != 'EMPLOYEE' && role != 'STAFF') {
+          continue;
+        }
+
         // Check if this worker has any bookings on the selected day
         final busyBookingsResp = await MockDatabase.instance.client
             .from('bookings')
-            .select()
+            .select('scheduled_at, service_end, status')
             .eq('worker_id', workerTableId)
             .build<List<Map<String, dynamic>>>();
             
         final busyBookings = busyBookingsResp.where((b) {
            final status = b['status']?.toString().toUpperCase() ?? '';
-           return status != 'CANCELLED' && status != 'REJECTED';
+           return status != 'CANCELLED' && status != 'REJECTED' && status != 'COMPLETED';
         }).toList();
         
         bool isBusy = false;
@@ -101,7 +117,7 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
         for (var b in busyBookings) {
           if (b['scheduled_at'] == null) continue;
           final bStart = DateTime.parse(b['scheduled_at']).toLocal();
-          final bEnd = bStart.add(const Duration(hours: 1));
+          final bEnd = b['service_end'] != null ? DateTime.parse(b['service_end']) : bStart.add(const Duration(hours: 1));
           
           // Check for intersection
           if (bStart.isBefore(exactEndDateTime) && bEnd.isAfter(exactDateTime)) {
@@ -111,19 +127,10 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
         }
 
         if (!isBusy) {
-          // Worker is free! Now get their user details (name, etc.)
-          final userDetails = await MockDatabase.instance.client
-              .from('users')
-              .select()
-              .eq('id', userId)
-              .maybeSingle()
-              .build<Map<String, dynamic>?>();
-          
-          if (userDetails != null) {
-            assignedWorkerData = userDetails;
-            assignedWorkerId = workerTableId;
-            break;
-          }
+          // Worker is free and verified!
+          assignedWorkerData = userDetails;
+          assignedWorkerId = workerTableId;
+          break;
         }
       }
 
@@ -147,7 +154,7 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
         'scheduled_at': exactDateTime.toUtc().toIso8601String(),
         'service_start': exactDateTime.toUtc().toIso8601String(), 
         'service_end': exactEndDateTime.toUtc().toIso8601String(), 
-        'status': 'ASSIGNED',
+        'status': 'IN_PROGRESS',
         'base_amount': widget.totalPrice,
         'discount_amount': 0.0,
         'final_amount': widget.totalPrice + 199 + 20,

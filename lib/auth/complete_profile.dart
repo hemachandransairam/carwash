@@ -11,37 +11,20 @@ class CompleteProfilePage extends StatefulWidget {
 
 class _CompleteProfilePageState extends State<CompleteProfilePage> {
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _gstController = TextEditingController();
   String? _selectedGender;
-  String _selectedCountryCode = "+91";
   DateTime? _selectedDob;
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    final user = MockDatabase.instance.auth.currentUser;
-    if (user != null && user['phone'] != null) {
-      String fullPhone = user['phone']!;
-      if (fullPhone.startsWith('+')) {
-        if (fullPhone.length > 10) {
-          _selectedCountryCode = fullPhone.substring(0, fullPhone.length - 10);
-          _phoneController.text = fullPhone.substring(fullPhone.length - 10);
-        } else {
-          _phoneController.text = fullPhone;
-        }
-      } else {
-        _phoneController.text = fullPhone;
-      }
-    }
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _phoneController.dispose();
     _emailController.dispose();
     _gstController.dispose();
     super.dispose();
@@ -75,7 +58,7 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
       final result = await MockDatabase.instance.from('users').upsert({
         if (user['id'] != null) 'id': user['id'],
         'name': name,
-        'phone': '$_selectedCountryCode${_phoneController.text.trim()}',
+        'phone': user['phone'],
         'email': _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
         'gender': _selectedGender,
         'gst_number': _gstController.text.trim().isEmpty ? null : _gstController.text.trim(),
@@ -301,55 +284,32 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
   }
 
   Widget _buildPhoneField() {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          height: 58,
-          decoration: BoxDecoration(
-            color: const Color(0xFFFAFAFA),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade100),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: _selectedCountryCode,
-              icon: const Icon(Icons.keyboard_arrow_down, size: 20),
-              items: ["+91", "+1", "+44", "+971"].map((String value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value, style: const TextStyle(fontSize: 15)),
-                );
-              }).toList(),
-              onChanged: (newValue) {
-                setState(() => _selectedCountryCode = newValue!);
-              },
+    // Phone is locked — taken from the login session, not editable
+    final user = MockDatabase.instance.auth.currentUser;
+    final phone = user?['phone']?.toString() ?? '';
+
+    return Container(
+      height: 58,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.lock_outline, size: 16, color: Colors.grey),
+          const SizedBox(width: 10),
+          Text(
+            phone.isNotEmpty ? '+$phone' : 'Not available',
+            style: const TextStyle(
+              fontSize: 15,
+              color: Colors.grey,
+              fontWeight: FontWeight.w500,
             ),
           ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: TextField(
-            controller: _phoneController,
-            keyboardType: TextInputType.phone,
-            decoration: InputDecoration(
-              hintText: "Enter Phone Number",
-              hintStyle: TextStyle(color: Colors.grey.withValues(alpha: 0.5), fontSize: 14),
-              filled: true,
-              fillColor: const Color(0xFFFAFAFA),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey.shade100),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFF000814)),
-              ),
-            ),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
