@@ -141,11 +141,12 @@ class _ProfilePageState extends State<ProfilePage> {
     final avatarSize = size.width * 0.25; // Increased from 0.2
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
+      extendBodyBehindAppBar: false,
+      backgroundColor: Colors.white,
       appBar: buildGlobalAppBar(
         context: context,
         title: "Profile",
-        titleColor: const Color.fromARGB(255, 0, 0, 0), // Make title white
+        titleColor: const Color(0xFF01102B),
         showBackButton: Navigator.canPop(context),
         actions: [
           Padding(
@@ -161,8 +162,8 @@ class _ProfilePageState extends State<ProfilePage> {
               },
               child: Container(
                 padding: const EdgeInsets.all(12),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -178,28 +179,12 @@ class _ProfilePageState extends State<ProfilePage> {
       body:
           _isLoading
               ? const Center(child: CircularProgressIndicator())
-              : Stack(
-                children: [
-                  // Background image extending to full screen including notch area
-                  Positioned.fill(
-                    child: Image.asset(
-                      'assets/loginbg.png',
-                      opacity: const AlwaysStoppedAnimation(0.1),
-                      fit: BoxFit.cover,
-                      alignment: Alignment.topCenter,
-                    ),
-                  ),
-                  // Content
-                  SingleChildScrollView(
-                    physics: const ClampingScrollPhysics(),
+              : SafeArea(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
                     child: Column(
                       children: [
-                      SizedBox(
-                        height:
-                            MediaQuery.of(context).padding.top +
-                            kToolbarHeight +
-                            24,
-                      ),
+                        const SizedBox(height: 24),
                       // Avatar Section
                       Center(
                         child: Stack(
@@ -255,6 +240,13 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                       ),
                       const SizedBox(height: 32), // Increased from 20
+                      // Apartment Plan Badge
+                      if ((_userData?['is_apartment_resident'] == true ||
+                          (_userData?['subscription_tier'] != null && _userData?['subscription_tier'] != 'NONE')))
+                        _buildApartmentBadge(),
+                      if ((_userData?['is_apartment_resident'] == true ||
+                          (_userData?['subscription_tier'] != null && _userData?['subscription_tier'] != 'NONE')))
+                        const SizedBox(height: 16),
                       // Menu Items
                       ListView(
                         padding: EdgeInsets.zero,
@@ -381,8 +373,99 @@ class _ProfilePageState extends State<ProfilePage> {
                     ],
                   ),
                 ),
-              ],
             ),
+    );
+  }
+
+  Widget _buildApartmentBadge() {
+    final aptName = _userData?['apartment_name']?.toString();
+    final flat = _userData?['flat_number']?.toString();
+    final block = _userData?['block']?.toString();
+    final plan = _userData?['subscription_tier']?.toString();
+
+    final subtitle = [
+      if (block != null && block.isNotEmpty) 'Block $block',
+      if (flat != null && flat.isNotEmpty) 'Flat $flat',
+      if (plan != null && plan.isNotEmpty) plan,
+    ].join(' • ');
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF01102B), Color(0xFF1A3A6B)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF01102B).withValues(alpha: 0.25),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.apartment, color: Colors.white, size: 24),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    aptName != null && aptName.isNotEmpty
+                        ? aptName
+                        : 'Apartment Plan',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
+                  if (subtitle.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.75),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.green.shade400,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text(
+                'Active',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

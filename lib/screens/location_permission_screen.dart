@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'manual_location_entry_screen.dart';
 import 'notification_permission_screen.dart';
+import '../core/services/mock_database.dart';
 
 // Bangalore bounding box (approximate)
 const double _bangaloreLatMin = 12.834;
@@ -27,6 +29,42 @@ class LocationPermissionScreen extends StatefulWidget {
 class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
   bool _isLoading = false;
   String? _locationMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkExistingLocation();
+  }
+
+  Future<void> _checkExistingLocation() async {
+    final user = MockDatabase.instance.auth.currentUser;
+    if (user != null) {
+      // Check if user already has any address saved in the addresses table
+      final addressData = await MockDatabase.instance
+          .from('addresses')
+          .select('id')
+          .eq('user_id', user['id'])
+          .limit(1)
+          .maybeSingle()
+          .build<Map<String, dynamic>?>();
+
+      if (addressData != null) {
+        // Address already exists, skip this screen
+        if (mounted) {
+          _navigateToNext();
+        }
+      }
+    }
+  }
+
+  void _navigateToNext() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const NotificationPermissionScreen(),
+      ),
+    );
+  }
 
   Future<void> _requestLocationPermission() async {
     setState(() {
@@ -78,10 +116,46 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
         ),
       );
 
+      // Reverse Geocode to get address string
+      String city = "Bangalore";
+      String street = "Current Location";
+      try {
+        List<Placemark> placemarks = await placemarkFromCoordinates(
+          position.latitude,
+          position.longitude,
+        );
+        if (placemarks.isNotEmpty) {
+          final p = placemarks[0];
+          city = p.locality ?? "Bangalore";
+          street = p.subLocality ?? p.street ?? "Current Location";
+        }
+      } catch (geoError) {
+        debugPrint("Geocoding failed: $geoError");
+      }
+
+      // Save to addresses table instead of users table
+      final user = MockDatabase.instance.auth.currentUser;
+      if (user != null) {
+        try {
+          await MockDatabase.instance.from('addresses').insert({
+            'user_id': user['id'],
+            'address_type': 'Current',
+            'house_no': '📍',
+            'street': street,
+            'city': city,
+            'is_default': true,
+            'created_at': DateTime.now().toUtc().toIso8601String(),
+          }).build();
+          
+          debugPrint("Location saved to addresses table");
+        } catch (dbError) {
+          debugPrint("Database Save Error: $dbError");
+        }
+      }
+
       setState(() {
         _isLoading = false;
-        _locationMessage =
-            'Location: ${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
+        _locationMessage = 'Location: $street, $city';
       });
 
       // Check if within Bangalore
@@ -91,12 +165,7 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen> {
       }
 
       if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const NotificationPermissionScreen(),
-          ),
-        );
+        _navigateToNext();
       }
     } catch (e) {
       setState(() {

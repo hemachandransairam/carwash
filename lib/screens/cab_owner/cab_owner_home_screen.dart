@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'cab_owner_dashboard.dart';
 import 'cab_owner_book_page.dart';
+import 'cab_owner_setup_page.dart';
 import '../booking_history_page.dart';
 import '../profile_page.dart';
+import '../../core/services/mock_database.dart';
 
 class CabOwnerHomeScreen extends StatefulWidget {
   const CabOwnerHomeScreen({super.key});
@@ -25,6 +27,39 @@ class _CabOwnerHomeScreenState extends State<CabOwnerHomeScreen> {
       BookingHistoryPage(),
       ProfilePage(),
     ];
+    _checkProfileComplete();
+  }
+
+  Future<void> _checkProfileComplete() async {
+    final user = MockDatabase.instance.auth.currentUser;
+    if (user == null) return;
+
+    // Check if cab owner profile is complete
+    final name = user['name']?.toString() ?? '';
+    final profileComplete = user['cab_owner_profile_complete'] == true;
+
+    if (name.isEmpty || !profileComplete) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const CabOwnerSetupPage(),
+            fullscreenDialog: true,
+          ),
+        );
+        // Refresh session after setup
+        final updatedUser = await MockDatabase.instance
+            .from('users')
+            .select()
+            .eq('id', user['id'])
+            .maybeSingle()
+            .build<Map<String, dynamic>?>();
+        if (updatedUser != null) {
+          MockDatabase.instance.auth.updateSessionUser(updatedUser);
+        }
+      });
+    }
   }
 
   @override

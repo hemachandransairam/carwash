@@ -31,8 +31,10 @@ class _BookServicesPageState extends State<BookServicesPage> {
   String _selectedTime = "";
 
   // Services selection
-  int _currentVehicleIndex = 0; // Index of the vehicle currently being selected in Step 1
-  final Map<String, Set<String>> _multiVehicleServiceSelections = {}; // VehicleID -> Set of ServiceIDs
+  int _currentVehicleIndex =
+      0; // Index of the vehicle currently being selected in Step 1
+  final Map<String, Set<String>> _multiVehicleServiceSelections =
+      {}; // VehicleID -> Set of ServiceIDs
   final Set<String> _selectedServiceIds = {};
   List<Map<String, dynamic>> _availableServices = [];
   bool _isLoadingServices = true;
@@ -56,39 +58,35 @@ class _BookServicesPageState extends State<BookServicesPage> {
     return Icons.settings_suggest;
   }
 
-  List<String> _getChecklistForService(String name) {
-    final sName = name.toLowerCase();
-    if (sName.contains("express")) {
-      return ["Outside foam wash", "Interior mat cleaning", "Tyre polishing"];
-    } else if (sName.contains("interior deep")) {
-      return [
-        "Outside Foam Wash",
-        "Interior Vacuuming & Mat Cleaning",
-        "Dashboard and Door Pad",
-        "Tyre Polishing",
-      ];
-    } else if (sName.contains("exterior rubbing")) {
-      return [
-        "Outside Foam Wash",
-        "Interior Vacuuming & Mat Cleaning",
-        "Dashboard and Door Pad Polishing",
-        "Outside Hand Wax Polishing",
-        "Outside Rubbing with Machine",
-        "Tyre Polishing",
-      ];
-    } else if (sName.contains("complete car spa")) {
-      return [
-        "Outside Foam Wash",
-        "Interior Vacuuming & Mat Washing",
-        "Interior Roof Cleaning",
-        "Interior Seat Washing",
-        "A/C Steaming",
-        "Interior Dashboard & Door Pad Polishing",
-        "Outside Hand Wax Polishing",
-        "Tyre Dressing & Polishing",
-      ];
+  // Checklist cache: service_id -> List<String>
+  final Map<String, List<String>> _checklistCache = {};
+
+  Future<List<String>> _getChecklistForService(String serviceId) async {
+    // Return from cache if already loaded
+    if (_checklistCache.containsKey(serviceId)) {
+      return _checklistCache[serviceId]!;
     }
-    return ["Standard inspection", "Eco-friendly products used"];
+
+    try {
+      final data =
+          await MockDatabase.instance
+              .from('service_checklists')
+              .select('item_name')
+              .eq('service_id', serviceId)
+              .order('sort_order')
+              .build<List<Map<String, dynamic>>>();
+
+      final items = data.map((e) => e['item_name'] as String).toList();
+
+      // Cache it
+      _checklistCache[serviceId] = items;
+
+      return items.isNotEmpty
+          ? items
+          : ["Standard inspection", "Eco-friendly products used"];
+    } catch (e) {
+      return ["Standard inspection", "Eco-friendly products used"];
+    }
   }
 
   String _getCategoryForVehicle(Map<String, dynamic> vehicle) {
@@ -104,23 +102,42 @@ class _BookServicesPageState extends State<BookServicesPage> {
 
     // Elite Criteria: Luxury brands, Large SUVs, 7-Seaters
     final eliteKeywords = [
-      'bmw', 'mercedes', 'audi', 'luxury', 'large suv', '7-seater', '7 seater', '7seater',
-      'innova', 'fortuner', 'endeavour', 'gloster', 'safari', 'xuv700', 'jaguar', 'land rover', 'range rover', 'volvo', 'porsche', 'lexus', 
-      'volkswagen', 'lamborghini', 'mini', 'bentley'
+      'bmw',
+      'mercedes',
+      'audi',
+      'luxury',
+      'large suv',
+      '7-seater',
+      '7 seater',
+      '7seater',
+      'innova',
+      'fortuner',
+      'endeavour',
+      'gloster',
+      'safari',
+      'xuv700',
+      'jaguar',
+      'land rover',
+      'range rover',
+      'volvo',
+      'porsche',
+      'lexus',
+      'volkswagen',
+      'lamborghini',
+      'mini',
+      'bentley',
     ];
 
     // Case 1: Luxury brands or explicitly Elite models
-    if (eliteKeywords.any((k) => 
-        brand.contains(k) || 
-        model.contains(k))) {
+    if (eliteKeywords.any((k) => brand.contains(k) || model.contains(k))) {
       return 'ELITE';
     }
 
     // Case 2: Specialized vehicle types (esp. 7-seaters from ANY brand)
-    if (type.contains('luxury') || 
-        type.contains('large suv') || 
-        type.contains('7-seater') || 
-        type.contains('7 seater') || 
+    if (type.contains('luxury') ||
+        type.contains('large suv') ||
+        type.contains('7-seater') ||
+        type.contains('7 seater') ||
         type.contains('7seater')) {
       return 'ELITE';
     }
@@ -144,37 +161,56 @@ class _BookServicesPageState extends State<BookServicesPage> {
 
   double get _totalPrice {
     double total = 0;
-    
+
     // In sequential selection (Step 1), we sum all COMPLETE selections (indices < current)
     // plus the current in-progress selections.
     // Subsequent selections (indices > current) are ignored to avoid confusion if going back.
-    
+
     if (_currentStep == 1 && _selectedVehicleIds.isNotEmpty) {
       // 1. Sum up all COMPLETED vehicles (indices BEFORE current)
       for (int i = 0; i < _currentVehicleIndex; i++) {
         final vId = _selectedVehicleIds.elementAt(i);
         final sIds = _multiVehicleServiceSelections[vId] ?? {};
-        final vehicle = _savedVehicles.firstWhere((v) => v['id'] == vId, orElse: () => {});
+        final vehicle = _savedVehicles.firstWhere(
+          (v) => v['id'] == vId,
+          orElse: () => {},
+        );
         if (vehicle.isEmpty) continue;
-        
+
         for (var sId in sIds) {
-          final service = _availableServices.firstWhere((s) => s['id'] == sId, orElse: () => {});
+          final service = _availableServices.firstWhere(
+            (s) => s['id'] == sId,
+            orElse: () => {},
+          );
           if (service.isEmpty) continue;
-          final vType = (vehicle['vehicle_type'] as String?)?.toUpperCase() ?? "SEDAN";
-          final price = _pricingMatrix[sId]?[vType] ?? (service['base_price'] as num?)?.toDouble() ?? 0.0;
+          final vType =
+              (vehicle['vehicle_type'] as String?)?.toUpperCase() ?? "SEDAN";
+          final price =
+              _pricingMatrix[sId]?[vType] ??
+              (service['base_price'] as num?)?.toDouble() ??
+              0.0;
           total += price;
         }
       }
 
       // 2. Add current vehicle's selections (Step 1 active state)
       final currentVId = _selectedVehicleIds.elementAt(_currentVehicleIndex);
-      final vehicle = _savedVehicles.firstWhere((v) => v['id'] == currentVId, orElse: () => {});
+      final vehicle = _savedVehicles.firstWhere(
+        (v) => v['id'] == currentVId,
+        orElse: () => {},
+      );
       if (vehicle.isNotEmpty) {
         for (var sId in _selectedServiceIds) {
-          final service = _availableServices.firstWhere((s) => s['id'] == sId, orElse: () => {});
+          final service = _availableServices.firstWhere(
+            (s) => s['id'] == sId,
+            orElse: () => {},
+          );
           if (service.isEmpty) continue;
-          final vType = (vehicle['vehicle_type'] as String?)?.toUpperCase() ?? "SEDAN";
-          final price = _pricingMatrix[sId]?[vType] ?? (service['base_price'] as num?)?.toDouble() ?? 0.0;
+          final category = _getCategoryForVehicle(vehicle);
+          final price =
+              _pricingMatrix[sId]?[category] ??
+              (service['base_price'] as num?)?.toDouble() ??
+              0.0;
           total += price;
         }
       }
@@ -182,18 +218,27 @@ class _BookServicesPageState extends State<BookServicesPage> {
       // In other steps (Schedule, Address, Summary), sum EVERYTHING in the map
       _multiVehicleServiceSelections.forEach((vId, sIds) {
         if (!_selectedVehicleIds.contains(vId)) return;
-        final vehicle = _savedVehicles.firstWhere((v) => v['id'] == vId, orElse: () => {});
+        final vehicle = _savedVehicles.firstWhere(
+          (v) => v['id'] == vId,
+          orElse: () => {},
+        );
         if (vehicle.isEmpty) return;
         for (var sId in sIds) {
-          final service = _availableServices.firstWhere((s) => s['id'] == sId, orElse: () => {});
+          final service = _availableServices.firstWhere(
+            (s) => s['id'] == sId,
+            orElse: () => {},
+          );
           if (service.isEmpty) return;
-          final vType = (vehicle['vehicle_type'] as String?)?.toUpperCase() ?? "SEDAN";
-          final price = _pricingMatrix[sId]?[vType] ?? (service['base_price'] as num?)?.toDouble() ?? 0.0;
+          final category = _getCategoryForVehicle(vehicle);
+          final price =
+              _pricingMatrix[sId]?[category] ??
+              (service['base_price'] as num?)?.toDouble() ??
+              0.0;
           total += price;
         }
       });
     }
-    
+
     return total;
   }
 
@@ -201,6 +246,8 @@ class _BookServicesPageState extends State<BookServicesPage> {
   final TextEditingController _addressController = TextEditingController();
   String? _addressLabel;
   List<Map<String, dynamic>> _savedAddresses = [];
+  double _latitude = 0.0;
+  double _longitude = 0.0;
 
   @override
   void initState() {
@@ -272,16 +319,24 @@ class _BookServicesPageState extends State<BookServicesPage> {
 
   Future<void> _fetchServices() async {
     try {
-      // 1. Fetch core services (base_price = MRP)
+      // 1. Fetch core services (Individual Services)
       final servicesData =
           await MockDatabase.instance
               .from('services')
               .select()
               .eq('is_active', true)
+              .eq('service_for', 'INDIVIDUAL')
               .order('name')
               .build<List<Map<String, dynamic>>>();
 
-      // 2. Fetch ALL pricing data (price = offer price per vehicle_type)
+      // Filter out only add-ons from the main list locally
+      final mainServices =
+          servicesData.where((s) {
+            final category = (s['category'] as String? ?? '').toUpperCase();
+            return category != 'ADDON' && category != 'ADD-ON';
+          }).toList();
+
+      // 2. Fetch ALL pricing data
       final pricingData =
           await MockDatabase.instance
               .from('service_pricing')
@@ -297,30 +352,64 @@ class _BookServicesPageState extends State<BookServicesPage> {
         _pricingMatrix[sId]![vType] = price;
       }
 
+      // 3. Check if user is an apartment resident — fetch services for APARTMENT/PLAN
+      final user = MockDatabase.instance.auth.currentUser;
+      final bool isApartmentResident =
+          (user?['subscription_tier'] != null &&
+              user?['subscription_tier'] != 'NONE') ||
+          user?['is_apartment_resident'] == true;
+
+      List<Map<String, dynamic>> planServices = [];
+      if (isApartmentResident) {
+        final planData =
+            await MockDatabase.instance
+                .from('services')
+                .select()
+                .eq('is_active', true)
+                .eq(
+                  'service_for',
+                  'APARTMENT',
+                ) // Use 'APARTMENT' for plan services
+                .build<List<Map<String, dynamic>>>();
+
+        planServices =
+            planData.map((s) => {...s, 'is_plan_service': true}).toList();
+      }
+
+      final allServices = [...planServices, ...mainServices];
+
+      // Determine vehicle type for the first selected vehicle for pricing
+      final firstVehicle =
+          _selectedVehicleIds.isNotEmpty
+              ? _savedVehicles.firstWhere(
+                (v) => v['id'] == _selectedVehicleIds.first,
+                orElse: () => <String, dynamic>{},
+              )
+              : <String, dynamic>{};
+      final vehiclePricingType =
+          firstVehicle.isNotEmpty
+              ? (firstVehicle['vehicle_type'] as String? ?? 'SEDAN')
+                  .toUpperCase()
+              : 'SEDAN';
+
       setState(() {
         _availableServices =
-            servicesData.map((s) {
-              final firstVehicle =
-                  _selectedVehicleIds.isNotEmpty
-                      ? _savedVehicles.firstWhere(
-                        (v) => v['id'] == _selectedVehicleIds.first,
-                        orElse: () => <String, dynamic>{},
-                      )
-                      : <String, dynamic>{};
+            allServices.map((s) {
+              // Plan services are always ₹0
+              if (s['is_plan_service'] == true) {
+                return {
+                  ...s,
+                  'price': 0.0,
+                  'mrp': null,
+                  'saveText': 'Covered by your plan',
+                  'icon': Icons.water_drop,
+                };
+              }
 
-              final vType =
-                  (firstVehicle['vehicle_type'] as String? ?? 'SEDAN')
-                      .toUpperCase();
-
-              // MRP = services.base_price
+              // Use raw vehicle_type (SEDAN, HATCHBACK, etc.) for pricing lookup
               final mrp = (s['base_price'] as num?)?.toDouble();
-
-              // Offer price = service_pricing.price for this vehicle type
-              // Falls back to base_price if no pricing row exists
               final offerPrice =
-                  _pricingMatrix[s['id']]?[vType] ?? mrp ?? 0.0;
-
-              // Savings
+                  _pricingMatrix[s['id']]?[vehiclePricingType] ?? mrp ?? 0.0;
               final savings =
                   (mrp != null && mrp > offerPrice) ? mrp - offerPrice : null;
               final saveText =
@@ -421,6 +510,8 @@ class _BookServicesPageState extends State<BookServicesPage> {
               );
               _addressController.text = _formatAddress(def);
               _addressLabel = def['address_type'] ?? "Saved";
+              _latitude = (def['latitude'] as num?)?.toDouble() ?? 0.0;
+              _longitude = (def['longitude'] as num?)?.toDouble() ?? 0.0;
             }
           });
         }
@@ -441,7 +532,9 @@ class _BookServicesPageState extends State<BookServicesPage> {
       if (_currentStep == 1) {
         // Handle sequential vehicle service selection
         final currentVId = _selectedVehicleIds.elementAt(_currentVehicleIndex);
-        _multiVehicleServiceSelections[currentVId] = Set.from(_selectedServiceIds);
+        _multiVehicleServiceSelections[currentVId] = Set.from(
+          _selectedServiceIds,
+        );
 
         if (_currentVehicleIndex < _selectedVehicleIds.length - 1) {
           setState(() {
@@ -450,7 +543,9 @@ class _BookServicesPageState extends State<BookServicesPage> {
             // Restore selection if it already existed (e.g. from going back)
             final nextVId = _selectedVehicleIds.elementAt(_currentVehicleIndex);
             if (_multiVehicleServiceSelections.containsKey(nextVId)) {
-              _selectedServiceIds.addAll(_multiVehicleServiceSelections[nextVId]!);
+              _selectedServiceIds.addAll(
+                _multiVehicleServiceSelections[nextVId]!,
+              );
             }
           });
           return;
@@ -463,7 +558,9 @@ class _BookServicesPageState extends State<BookServicesPage> {
         if (_selectedVehicleIds.isNotEmpty) {
           final firstVId = _selectedVehicleIds.first;
           if (_multiVehicleServiceSelections.containsKey(firstVId)) {
-            _selectedServiceIds.addAll(_multiVehicleServiceSelections[firstVId]!);
+            _selectedServiceIds.addAll(
+              _multiVehicleServiceSelections[firstVId]!,
+            );
           }
         }
       }
@@ -479,11 +576,15 @@ class _BookServicesPageState extends State<BookServicesPage> {
         for (var vId in _selectedVehicleIds) {
           final sIds = _multiVehicleServiceSelections[vId] ?? {};
           final v = _savedVehicles.firstWhere((v) => v['id'] == vId);
-          final vType = (v['vehicle_type'] as String?)?.toUpperCase() ?? "SEDAN";
+          final vType =
+              (v['vehicle_type'] as String?)?.toUpperCase() ?? "SEDAN";
 
           for (var sId in sIds) {
             final s = _availableServices.firstWhere((s) => s['id'] == sId);
-            final price = _pricingMatrix[sId]?[vType] ?? (s['base_price'] as num?)?.toDouble() ?? 0.0;
+            final price =
+                _pricingMatrix[sId]?[vType] ??
+                (s['base_price'] as num?)?.toDouble() ??
+                0.0;
             final sData = {...s, 'price': price, 'vehicle_id': vId};
             finalServices.add(sData);
             perVehicleServices.putIfAbsent(vId, () => []).add(sData);
@@ -496,13 +597,24 @@ class _BookServicesPageState extends State<BookServicesPage> {
             builder:
                 (context) => BookingSummaryPage(
                   selectedServices: finalServices,
-                  selectedVehicles: _savedVehicles.where((v) => _selectedVehicleIds.contains(v['id'])).toList(),
+                  selectedVehicles:
+                      _savedVehicles
+                          .where((v) => _selectedVehicleIds.contains(v['id']))
+                          .toList(),
                   totalPrice: _totalPrice,
                   selectedDate: _selectedDate,
                   selectedTime: _selectedTime,
-                  vehicle: _savedVehicles.length == 1 ? _savedVehicles.first : (_savedVehicles.firstWhere((v) => v['id'] == _selectedVehicleIds.first, orElse: () => {})),
+                  vehicle:
+                      _savedVehicles.length == 1
+                          ? _savedVehicles.first
+                          : (_savedVehicles.firstWhere(
+                            (v) => v['id'] == _selectedVehicleIds.first,
+                            orElse: () => {},
+                          )),
                   addressLabel: _addressLabel ?? "Location",
                   addressText: _addressController.text,
+                  latitude: _latitude,
+                  longitude: _longitude,
                 ),
           ),
         );
@@ -969,116 +1081,163 @@ class _BookServicesPageState extends State<BookServicesPage> {
   }
 
   Widget _buildServicesSelection() {
-    final currentVId = _selectedVehicleIds.isNotEmpty
-        ? _selectedVehicleIds.elementAt(_currentVehicleIndex)
-        : null;
+    final currentVId =
+        _selectedVehicleIds.isNotEmpty
+            ? _selectedVehicleIds.elementAt(_currentVehicleIndex)
+            : null;
     final currentV =
         currentVId != null
-            ? _savedVehicles.firstWhere((v) => v['id'] == currentVId, orElse: () => {})
-            : {};
+            ? _savedVehicles.firstWhere(
+              (v) => v['id'] == currentVId,
+              orElse: () => <String, dynamic>{},
+            )
+            : <String, dynamic>{};
 
     return _isLoadingServices
-        ? const Center(child: CircularProgressIndicator(color: Color(0xFF01102B)))
+        ? const Center(
+          child: CircularProgressIndicator(color: Color(0xFF01102B)),
+        )
         : SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      "Choose Services",
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF01102B),
-                      ),
-                    ),
-                    if (_selectedVehicleIds.length > 1)
-                      Text(
-                        "${_currentVehicleIndex + 1} of ${_selectedVehicleIds.length}",
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue,
-                        ),
-                      ),
-                  ],
-                ),
-                if (currentV.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.grey[200]!),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withAlpha(10),
-                          blurRadius: 10,
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.directions_car, color: Color(0xFF01102B)),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                "${currentV['brand_name']} ${currentV['car_model'] ?? ''}",
-                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                              ),
-                              Text(
-                                "License: ${currentV['license'] ?? 'N/A'}",
-                                style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    "Choose Services",
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF01102B),
                     ),
                   ),
-                ],
-                const SizedBox(height: 8),
-                if (_availableServices.isEmpty)
-                  const Center(child: Text("No services available right now")),
-                ..._availableServices.map((s) {
-                  final sName = s['name'] as String;
-                  // Use DB pricing: offer price from _pricingMatrix, MRP from services.base_price
-                  final vType = (currentV['vehicle_type'] as String?)?.toUpperCase() ?? "SEDAN";
-                  final displayPrice = _pricingMatrix[s['id']]?[vType] ?? (s['base_price'] as num?)?.toDouble() ?? 0.0;
-                  final baseMrp = (s['base_price'] as num?)?.toDouble();
-                  final double? displayMrp = (baseMrp != null && baseMrp > displayPrice) ? baseMrp : null;
-                  final String? displaySave = displayMrp != null ? 'You Save ₹${(displayMrp - displayPrice).toStringAsFixed(0)}' : null;
-
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: buildServiceTile(
-                      title: sName,
-                      icon: s['icon'],
-                      price: displayPrice,
-                      mrp: displayMrp,
-                      saveText: displaySave,
-                      checklist: _getChecklistForService(sName),
-                      categoryBadge: _getCategoryBadgeForVehicle(),
-                      isSelected: _selectedServiceIds.contains(s['id']),
-                      onTap:
-                          () => setState(() {
-                            _selectedServiceIds.contains(s['id'])
-                                ? _selectedServiceIds.remove(s['id'])
-                                : _selectedServiceIds.add(s['id']);
-                          }),
+                  if (_selectedVehicleIds.length > 1)
+                    Text(
+                      "${_currentVehicleIndex + 1} of ${_selectedVehicleIds.length}",
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue,
+                      ),
                     ),
-                  );
-                }),
+                ],
+              ),
+              if (currentV.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.grey[200]!),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(10),
+                        blurRadius: 10,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.directions_car,
+                        color: Color(0xFF01102B),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "${currentV['brand_name']} ${currentV['car_model'] ?? ''}",
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                              ),
+                            ),
+                            Text(
+                              "License: ${currentV['license'] ?? 'N/A'}",
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
-            ),
-          );
+              const SizedBox(height: 8),
+              if (_availableServices.isEmpty)
+                const Center(child: Text("No services available right now")),
+              ..._availableServices.map((s) {
+                final sName = s['name'] as String;
+                final bool isPlanService = s['is_plan_service'] == true;
+                // Use raw vehicle_type for pricing lookup
+                final vehiclePricingType =
+                    currentV.isNotEmpty
+                        ? (currentV['vehicle_type'] as String? ?? 'SEDAN')
+                            .toUpperCase()
+                        : 'SEDAN';
+
+                final double displayPrice =
+                    isPlanService
+                        ? 0.0
+                        : (_pricingMatrix[s['id']]?[vehiclePricingType] ??
+                            (s['base_price'] as num?)?.toDouble() ??
+                            0.0);
+                final double? displayMrp =
+                    isPlanService
+                        ? null
+                        : (() {
+                          final baseMrp = (s['base_price'] as num?)?.toDouble();
+                          return (baseMrp != null && baseMrp > displayPrice)
+                              ? baseMrp
+                              : null;
+                        })();
+                final String? displaySave =
+                    isPlanService
+                        ? 'Covered by your plan'
+                        : (displayMrp != null
+                            ? 'You Save ₹${(displayMrp - displayPrice).toStringAsFixed(0)}'
+                            : null);
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: FutureBuilder<List<String>>(
+                    future: _getChecklistForService(s['id'] as String),
+                    builder: (context, snapshot) {
+                      final checklist = snapshot.data ?? [];
+                      return buildServiceTile(
+                        title: sName,
+                        icon: isPlanService ? Icons.water_drop : s['icon'],
+                        price: displayPrice,
+                        mrp: displayMrp,
+                        saveText: displaySave,
+                        checklist: checklist,
+                        categoryBadge:
+                            isPlanService
+                                ? 'APARTMENT PLAN'
+                                : _getCategoryBadgeForVehicle(),
+                        isSelected: _selectedServiceIds.contains(s['id']),
+                        onTap:
+                            () => setState(() {
+                              _selectedServiceIds.contains(s['id'])
+                                  ? _selectedServiceIds.remove(s['id'])
+                                  : _selectedServiceIds.add(s['id']);
+                            }),
+                      );
+                    },
+                  ),
+                );
+              }),
+            ],
+          ),
+        );
   }
 
   Widget _buildTimeSelection() {
@@ -1466,7 +1625,7 @@ class _BookServicesPageState extends State<BookServicesPage> {
       );
 
       Position? position = await Geolocator.getLastKnownPosition();
-      
+
       // If no last known position, or if we want a fresh one, get current position with timeout
       position ??= await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
@@ -1482,23 +1641,29 @@ class _BookServicesPageState extends State<BookServicesPage> {
 
       if (mounted) {
         // Safe check to avoid popping multiple times or after context is gone
-        Navigator.pop(context); 
+        Navigator.pop(context);
       }
 
       if (placemarks.isNotEmpty) {
         Placemark place = placemarks[0];
         // Build a more readable address
         List<String> addressParts = [];
-        if (place.street != null && place.street!.isNotEmpty) addressParts.add(place.street!);
-        if (place.subLocality != null && place.subLocality!.isNotEmpty) addressParts.add(place.subLocality!);
-        if (place.locality != null && place.locality!.isNotEmpty) addressParts.add(place.locality!);
-        if (place.postalCode != null && place.postalCode!.isNotEmpty) addressParts.add(place.postalCode!);
+        if (place.street != null && place.street!.isNotEmpty)
+          addressParts.add(place.street!);
+        if (place.subLocality != null && place.subLocality!.isNotEmpty)
+          addressParts.add(place.subLocality!);
+        if (place.locality != null && place.locality!.isNotEmpty)
+          addressParts.add(place.locality!);
+        if (place.postalCode != null && place.postalCode!.isNotEmpty)
+          addressParts.add(place.postalCode!);
 
         String address = addressParts.join(', ');
-        
+
         setState(() {
           _addressLabel = "Current";
           _addressController.text = address;
+          _latitude = position!.latitude;
+          _longitude = position!.longitude;
         });
       } else {
         throw "Could not determine street address. Please type it manually.";
@@ -1630,6 +1795,12 @@ class _BookServicesPageState extends State<BookServicesPage> {
                             onSelected(option);
                             setState(() {
                               _addressLabel = option['address_type'];
+                              _latitude =
+                                  (option['latitude'] as num?)?.toDouble() ??
+                                  0.0;
+                              _longitude =
+                                  (option['longitude'] as num?)?.toDouble() ??
+                                  0.0;
                             });
                           },
                         );
@@ -1642,7 +1813,10 @@ class _BookServicesPageState extends State<BookServicesPage> {
             onSelected: (Map<String, dynamic> selection) {
               // Update state is handled by controller update, but we might want to set label
               setState(() {
-                _addressLabel = selection['label'];
+                _addressLabel = selection['address_type'] ?? selection['label'];
+                _latitude = (selection['latitude'] as num?)?.toDouble() ?? 0.0;
+                _longitude =
+                    (selection['longitude'] as num?)?.toDouble() ?? 0.0;
               });
             },
           ),

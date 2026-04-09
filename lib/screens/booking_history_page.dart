@@ -188,7 +188,8 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
     Map<String, dynamic> booking, {
     bool isUnpaid = false,
   }) {
-    final date = DateTime.parse(booking['created_at']);
+    final dateStr = booking['scheduled_at'] ?? booking['created_at'];
+    final date = DateTime.parse(dateStr).toLocal();
     final formattedDate = DateFormat('MMM dd, yyyy • hh:mm a').format(date);
     final status = booking['status'] ?? 'Pending';
     final price = booking['final_amount'] ?? 0;
@@ -291,17 +292,24 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  booking['address_text'] ??
-                      booking['address'] ??
-                      "No address provided",
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF01102B),
-                    fontWeight: FontWeight.w600,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: FutureBuilder<Map<String, dynamic>?>(
+                  future: MockDatabase.instance.from('addresses').select('house_no, street, city').eq('user_id', booking['user_id'] ?? '').limit(1).maybeSingle().build<Map<String, dynamic>?>(),
+                  builder: (context, aSnap) {
+                    final addr = aSnap.data;
+                    final addrText = addr != null 
+                      ? [addr['house_no'], addr['street'], addr['city']].where((e) => e != null && e.toString().isNotEmpty).join(", ")
+                      : "Fetching location...";
+                    return Text(
+                      addrText,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF01102B),
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    );
+                  }
                 ),
               ),
             ],
@@ -384,8 +392,8 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
               qrToken: booking['qr_token']?.toString(),
               vehicle: vehicle ?? {},
               selectedServices: serviceNames,
-              selectedDate: DateTime.parse(booking['scheduled_at']),
-              selectedTime: DateFormat('hh:mm a').format(DateTime.parse(booking['scheduled_at'])),
+              selectedDate: DateTime.parse(booking['scheduled_at']).toLocal(),
+              selectedTime: DateFormat('hh:mm a').format(DateTime.parse(booking['scheduled_at']).toLocal()),
               addressLabel: "Home",
               addressText: address != null ? [address['house_no'], address['street'], address['city']].where((e) => e != null).join(", ") : "No Address",
               totalPrice: (booking['final_amount'] ?? 0).toDouble(),
@@ -466,32 +474,19 @@ class _BookingHistoryPageState extends State<BookingHistoryPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ...["Change of plans", "Found better price", "Worker late", "Scheduling conflict"].map((r) =>
-                          RadioListTile<String>(
-                            title: Text(r, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                            value: r,
-                            groupValue: currentReason,
-                            onChanged: (val) => setState(() {
-                              currentReason = val;
-                              showTextField = val == "Other";
-                            }),
-                            activeColor: const Color(0xFF01102B),
-                          )
-                        ),
-                        RadioListTile<String>(
-                          title: const Text("Other", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                          value: "Other",
-                          groupValue: currentReason,
-                          onChanged: (val) => setState(() {
-                            currentReason = val;
-                            showTextField = val == "Other";
-                          }),
-                          activeColor: const Color(0xFF01102B),
-                        ),
-                      ],
+                    ...["Change of plans", "Found better price", "Worker late", "Scheduling conflict", "Other"].map((r) =>
+                      RadioListTile<String>(
+                        title: Text(r, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                        value: r,
+                        groupValue: currentReason,
+                        onChanged: (val) => setState(() {
+                          currentReason = val;
+                          showTextField = val == "Other";
+                        }),
+                        activeColor: const Color(0xFF01102B),
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                      )
                     ),
                     if (showTextField)
                       Padding(

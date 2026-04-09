@@ -173,6 +173,17 @@ class _HomeContentState extends State<HomeContent> {
 
   String _currentAddress = "Select Location";
 
+  Future<List<Map<String, dynamic>>> _fetchActiveOrders() async {
+    final user = MockDatabase.instance.auth.currentUser;
+    return MockDatabase.instance
+        .from('bookings')
+        .select()
+        .eq('user_id', user?['id'] ?? '')
+        .order('created_at', ascending: false)
+        .limit(5)
+        .build<List<Map<String, dynamic>>>();
+  }
+
   final List<Map<String, dynamic>> _banners = [
     {
       'colors': [const Color(0xFFFDC830), const Color(0xFFF37335)],
@@ -192,14 +203,7 @@ class _HomeContentState extends State<HomeContent> {
   @override
   void initState() {
     super.initState();
-    final user = MockDatabase.instance.auth.currentUser;
-    _activeOrderFuture = MockDatabase.instance
-        .from('bookings')
-        .select()
-        .eq('user_id', user?['id'] ?? '')
-        .order('created_at', ascending: false)
-        .limit(5)
-        .build<List<Map<String, dynamic>>>();
+    _activeOrderFuture = _fetchActiveOrders();
 
     // Start at a large index in the middle for circular scrolling simulation
     _currentBannerPage = _infinitePageCount ~/ 2;
@@ -224,13 +228,14 @@ class _HomeContentState extends State<HomeContent> {
     if (user == null) return;
 
     try {
-      final response = await MockDatabase.instance
-          .from('addresses')
-          .select('house_no, street, city')
-          .eq('user_id', user['id'])
-          .order('created_at', ascending: false)
-          .limit(1)
-          .build<List<Map<String, dynamic>>>();
+      final response =
+          await MockDatabase.instance
+              .from('addresses')
+              .select('house_no, street, city')
+              .eq('user_id', user['id'])
+              .order('created_at', ascending: false)
+              .limit(1)
+              .build<List<Map<String, dynamic>>>();
 
       if (response.isNotEmpty) {
         final r = response.first;
@@ -270,18 +275,26 @@ class _HomeContentState extends State<HomeContent> {
     if (user == null) return;
 
     // Fetch recent addresses from the addresses table instead of bookings
-    final response = await MockDatabase.instance
-        .from('addresses')
-        .select('house_no, street, city')
-        .eq('user_id', user['id'])
-        .order('created_at', ascending: false)
-        .limit(5)
-        .build<List<Map<String, dynamic>>>();
+    final response =
+        await MockDatabase.instance
+            .from('addresses')
+            .select('house_no, street, city')
+            .eq('user_id', user['id'])
+            .order('created_at', ascending: false)
+            .limit(5)
+            .build<List<Map<String, dynamic>>>();
 
-    final List<Map<String, dynamic>> recentAddresses = response.map((r) => {
-      'id': r['id'],
-      'display': "${r['house_no'] ?? ''} ${r['street'] ?? r['city'] ?? ''}".trim(),
-    }).toList();
+    final List<Map<String, dynamic>> recentAddresses =
+        response
+            .map(
+              (r) => {
+                'id': r['id'],
+                'display':
+                    "${r['house_no'] ?? ''} ${r['street'] ?? r['city'] ?? ''}"
+                        .trim(),
+              },
+            )
+            .toList();
 
     if (!mounted) return;
 
@@ -325,7 +338,9 @@ class _HomeContentState extends State<HomeContent> {
                             ),
                             title: Text(item['display'] ?? ''),
                             onTap: () {
-                              setState(() => _currentAddress = item['display'] ?? '');
+                              setState(
+                                () => _currentAddress = item['display'] ?? '',
+                              );
                               Navigator.pop(context);
                             },
                           ),
@@ -425,18 +440,26 @@ class _HomeContentState extends State<HomeContent> {
                               });
 
                               // 1. Check Permissions
-                              bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-                              if (!serviceEnabled) throw 'Location services are disabled.';
+                              bool serviceEnabled =
+                                  await Geolocator.isLocationServiceEnabled();
+                              if (!serviceEnabled)
+                                throw 'Location services are disabled.';
 
-                              LocationPermission permission = await Geolocator.checkPermission();
+                              LocationPermission permission =
+                                  await Geolocator.checkPermission();
                               if (permission == LocationPermission.denied) {
-                                permission = await Geolocator.requestPermission();
-                                if (permission == LocationPermission.denied) throw 'Permission denied';
+                                permission =
+                                    await Geolocator.requestPermission();
+                                if (permission == LocationPermission.denied)
+                                  throw 'Permission denied';
                               }
-                              if (permission == LocationPermission.deniedForever) throw 'Permission permanently denied';
+                              if (permission ==
+                                  LocationPermission.deniedForever)
+                                throw 'Permission permanently denied';
 
                               // 2. Get Position
-                              Position? position = await Geolocator.getLastKnownPosition();
+                              Position? position =
+                                  await Geolocator.getLastKnownPosition();
                               position ??= await Geolocator.getCurrentPosition(
                                 locationSettings: const LocationSettings(
                                   accuracy: LocationAccuracy.high,
@@ -445,29 +468,68 @@ class _HomeContentState extends State<HomeContent> {
                               );
 
                               // 3. Geocode
-                              List<Placemark> placemarks = await placemarkFromCoordinates(
-                                position.latitude,
-                                position.longitude,
-                              ).timeout(const Duration(seconds: 5), onTimeout: () => []);
+                              List<Placemark> placemarks =
+                                  await placemarkFromCoordinates(
+                                    position.latitude,
+                                    position.longitude,
+                                  ).timeout(
+                                    const Duration(seconds: 5),
+                                    onTimeout: () => [],
+                                  );
 
                               if (placemarks.isNotEmpty) {
                                 Placemark p = placemarks[0];
                                 List<String> parts = [];
-                                if (p.street?.isNotEmpty == true) parts.add(p.street!);
-                                if (p.subLocality?.isNotEmpty == true) parts.add(p.subLocality!);
-                                if (p.locality?.isNotEmpty == true) parts.add(p.locality!);
+                                if (p.street?.isNotEmpty == true)
+                                  parts.add(p.street!);
+                                if (p.subLocality?.isNotEmpty == true)
+                                  parts.add(p.subLocality!);
+                                if (p.locality?.isNotEmpty == true)
+                                  parts.add(p.locality!);
                                 String addr = parts.join(', ');
 
                                 setState(() => _currentAddress = addr);
                                 if (mounted) nav.pop();
-                                await _saveNewAddress(addr);
+
+                                // Save with coordinates to the addresses table
+                                final user =
+                                    MockDatabase.instance.auth.currentUser;
+                                if (user != null) {
+                                  await MockDatabase.instance
+                                      .from('addresses')
+                                      .insert({
+                                        'user_id': user['id'],
+                                        'house_no': p.subThoroughfare ?? '📍',
+                                        'street':
+                                            p.thoroughfare ??
+                                            p.subLocality ??
+                                            p.street ??
+                                            'Current',
+                                        'city': p.locality ?? 'Bangalore',
+                                        'state':
+                                            p.administrativeArea ?? 'Karnataka',
+                                        'pincode': p.postalCode ?? '000000',
+                                        'latitude': position.latitude,
+                                        'longitude': position.longitude,
+                                        'address_type': 'HOME',
+                                        'is_default': true,
+                                        'created_at':
+                                            DateTime.now()
+                                                .toUtc()
+                                                .toIso8601String(),
+                                      })
+                                      .build();
+                                }
                               } else {
                                 throw "Could not resolve address.";
                               }
                             } catch (e) {
                               if (mounted) {
                                 messenger.showSnackBar(
-                                  SnackBar(content: Text("Error: $e"), backgroundColor: Colors.redAccent)
+                                  SnackBar(
+                                    content: Text("Error: $e"),
+                                    backgroundColor: Colors.redAccent,
+                                  ),
                                 );
                               }
                             }
@@ -488,11 +550,14 @@ class _HomeContentState extends State<HomeContent> {
     try {
       final user = MockDatabase.instance.auth.currentUser;
       if (user == null) return;
-      
+
       // Upsert into addresses table. (Simplistic: splitting into city for mock data)
       final parts = addressPart.split(' ');
       final city = parts.last;
-      final street = parts.length > 1 ? parts.sublist(0, parts.length - 1).join(' ') : addressPart;
+      final street =
+          parts.length > 1
+              ? parts.sublist(0, parts.length - 1).join(' ')
+              : addressPart;
 
       await MockDatabase.instance.from('addresses').insert({
         'user_id': user['id'],
@@ -543,305 +608,749 @@ class _HomeContentState extends State<HomeContent> {
 
     return RefreshIndicator(
       onRefresh: () async {
-        setState(() {});
-        return Future.delayed(const Duration(milliseconds: 800));
+        setState(() {
+          _activeOrderFuture = _fetchActiveOrders();
+        });
+        await _activeOrderFuture;
       },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-          // Header Section
-          Stack(
-            children: [
-              Container(
-                width: double.infinity,
-                height: headerHeight,
-                decoration: const BoxDecoration(
-                  borderRadius: BorderRadius.only(
-                    bottomLeft: Radius.circular(40),
-                    bottomRight: Radius.circular(40),
-                  ),
-                  image: DecorationImage(
-                    image: AssetImage('assets/home_title.png'),
-                    fit: BoxFit.cover,
+            // Header Section
+            Stack(
+              children: [
+                Container(
+                  width: double.infinity,
+                  height: headerHeight,
+                  decoration: const BoxDecoration(
+                    borderRadius: BorderRadius.only(
+                      bottomLeft: Radius.circular(40),
+                      bottomRight: Radius.circular(40),
+                    ),
+                    image: DecorationImage(
+                      image: AssetImage('assets/home_title.png'),
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ),
-              ),
-              Positioned(
-                top: size.height * 0.065,
-                left: horizontalPadding,
-                right: horizontalPadding,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Welcome,',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w400,
+                Positioned(
+                  top: size.height * 0.065,
+                  left: horizontalPadding,
+                  right: horizontalPadding,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Welcome,',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w400,
+                                ),
                               ),
-                            ),
-                            FutureBuilder<Map<String, dynamic>?>(
-                              future:
-                                  MockDatabase.instance
-                                      .from('users')
-                                      .select('name')
-                                      .eq('id', MockDatabase.instance.auth.currentUser?['id'] ?? '')
-                                      .maybeSingle()
-                                      .build<Map<String, dynamic>?>(),
-                              builder: (context, snapshot) {
-                                if (snapshot.hasData) {
-                                  final name =
-                                      snapshot.data?['name'] as String? ??
-                                      'User';
+                              FutureBuilder<Map<String, dynamic>?>(
+                                future:
+                                    MockDatabase.instance
+                                        .from('users')
+                                        .select('name')
+                                        .eq(
+                                          'id',
+                                          MockDatabase
+                                                  .instance
+                                                  .auth
+                                                  .currentUser?['id'] ??
+                                              '',
+                                        )
+                                        .maybeSingle()
+                                        .build<Map<String, dynamic>?>(),
+                                builder: (context, snapshot) {
+                                  if (snapshot.hasData) {
+                                    final name =
+                                        snapshot.data?['name'] as String? ??
+                                        'User';
+                                    return Text(
+                                      name,
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: size.width * 0.08,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    );
+                                  }
                                   return Text(
-                                    name,
+                                    'User',
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontSize: size.width * 0.08,
                                       fontWeight: FontWeight.w900,
                                     ),
                                   );
-                                }
-                                return Text(
-                                  'User',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: size.width * 0.08,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                        GestureDetector(
-                          onTap: () {
-                            // Navigate to Notification Page
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const NotificationPage(),
+                                },
                               ),
-                            );
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
+                            ],
+                          ),
+                          GestureDetector(
+                            onTap: () {
+                              // Navigate to Notification Page
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder:
+                                      (context) => const NotificationPage(),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.notifications_none,
+                                color: Color(0xFF01102B),
+                                size: 24,
+                              ),
                             ),
-                            child: const Icon(
-                              Icons.notifications_none,
-                              color: Color(0xFF01102B),
-                              size: 24,
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: size.height * 0.035),
+                      const Text(
+                        'Location',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      GestureDetector(
+                        onTap: _showAddressSelection,
+                        child: Container(
+                          constraints: BoxConstraints(
+                            maxWidth:
+                                size.width * 0.5, // Limit to half screen width
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.location_on,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  _currentAddress.length > 25
+                                      ? '${_currentAddress.substring(0, 25)}...'
+                                      : _currentAddress,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(
+                                Icons.keyboard_arrow_down,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 24),
+
+            // Banner Carousel Section
+            SizedBox(
+              height: 160,
+              child: PageView.builder(
+                controller: _pageController,
+                onPageChanged: (int page) {
+                  setState(() {
+                    _currentBannerPage = page;
+                  });
+                },
+                itemBuilder: (context, index) {
+                  final banner = _banners[index % _banners.length];
+                  return _buildBanner(
+                    horizontalPadding,
+                    size,
+                    banner['colors'],
+                    banner['title'],
+                    banner['subtitle'],
+                  );
+                },
+              ),
+            ),
+
+            const SizedBox(height: 16),
+            // Page Indicator
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(_banners.length, (index) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: _buildIndicator(index),
+                );
+              }),
+            ),
+
+            const SizedBox(height: 24),
+
+            // Book Service Button
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+              child: SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: () {
+                    // Navigate to Booking Tab (Index 1)
+                    final homeState =
+                        context.findAncestorStateOfType<_HomeScreenState>();
+                    if (homeState != null) {
+                      homeState.setState(() => homeState._selectedIndex = 1);
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF01102B),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 4,
+                    shadowColor: const Color(0xFF01102B).withValues(alpha: 0.4),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.calendar_month, color: Colors.white),
+                      const SizedBox(width: 12),
+                      const Text(
+                        "Book a Service",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // Apartment Plan Banner (shown only for apartment residents)
+            Builder(
+              builder: (context) {
+                final user = MockDatabase.instance.auth.currentUser;
+                final bool isApt =
+                    user?['subscription_tier'] == 'APARTMENT_PLAN' ||
+                    user?['is_apartment_resident'] == true;
+                if (!isApt) return const SizedBox.shrink();
+                final aptName = user?['apartment_name']?.toString();
+                final flat = user?['flat_number']?.toString();
+                final block = user?['block']?.toString();
+                final subtitle = [
+                  if (block != null && block.isNotEmpty) 'Block $block',
+                  if (flat != null && flat.isNotEmpty) 'Flat $flat',
+                ].join(' • ');
+                return Padding(
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 24),
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF01102B), Color(0xFF1A3A6B)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF01102B).withValues(alpha: 0.2),
+                          blurRadius: 12,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.apartment,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                aptName != null && aptName.isNotEmpty
+                                    ? aptName
+                                    : 'Apartment Plan',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              if (subtitle.isNotEmpty)
+                                Text(
+                                  subtitle,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.7),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              const SizedBox(height: 4),
+                              const Text(
+                                '10% off on all on-demand services',
+                                style: TextStyle(
+                                  color: Colors.greenAccent,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade400,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            'Active',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),
                       ],
                     ),
-                    SizedBox(height: size.height * 0.035),
-                    const Text(
-                      'Location',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    GestureDetector(
-                      onTap: _showAddressSelection,
-                      child: Container(
-                        constraints: BoxConstraints(
-                          maxWidth:
-                              size.width * 0.5, // Limit to half screen width
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.location_on,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                _currentAddress.length > 25
-                                    ? '${_currentAddress.substring(0, 25)}...'
-                                    : _currentAddress,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            const Icon(
-                              Icons.keyboard_arrow_down,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 24),
-
-          // Banner Carousel Section
-          SizedBox(
-            height: 160,
-            child: PageView.builder(
-              controller: _pageController,
-              onPageChanged: (int page) {
-                setState(() {
-                  _currentBannerPage = page;
-                });
-              },
-              itemBuilder: (context, index) {
-                final banner = _banners[index % _banners.length];
-                return _buildBanner(
-                  horizontalPadding,
-                  size,
-                  banner['colors'],
-                  banner['title'],
-                  banner['subtitle'],
-                );
-              },
-            ),
-          ),
-
-          const SizedBox(height: 16),
-          // Page Indicator
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(_banners.length, (index) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 3),
-                child: _buildIndicator(index),
-              );
-            }),
-          ),
-
-          const SizedBox(height: 24),
-
-          // Book Service Button
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-            child: SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                onPressed: () {
-                  // Navigate to Booking Tab (Index 1)
-                  final homeState =
-                      context.findAncestorStateOfType<_HomeScreenState>();
-                  if (homeState != null) {
-                    homeState.setState(() => homeState._selectedIndex = 1);
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF01102B),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
                   ),
-                  elevation: 4,
-                  shadowColor: const Color(0xFF01102B).withValues(alpha: 0.4),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.calendar_month, color: Colors.white),
-                    const SizedBox(width: 12),
-                    const Text(
-                      "Book a Service",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                );
+              },
+            ),
+
+            // Active Orders Section
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: _activeOrderFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const SizedBox.shrink();
+                }
+                if (snapshot.hasError) {
+                  return const SizedBox.shrink();
+                }
+
+                final allBookings = snapshot.data ?? [];
+                Map<String, dynamic>? activeBooking;
+
+                if (allBookings.isNotEmpty) {
+                  activeBooking = allBookings.firstWhere((b) {
+                    final status = (b['status'] as String? ?? '').toUpperCase();
+                    return status == 'ASSIGNED' ||
+                        status == 'CREATED' ||
+                        status == 'IN_PROGRESS';
+                  }, orElse: () => {});
+                  if (activeBooking.isEmpty) activeBooking = null;
+                }
+
+                if (activeBooking == null) {
+                  return const SizedBox.shrink();
+                }
+
+                // Helper to get formatted date
+                String formatDateTime(String? iso) {
+                  if (iso == null) return "N/A";
+                  final dt = DateTime.parse(iso).toLocal();
+                  return DateFormat('EEE, d MMM • h:mm a').format(dt);
+                }
+
+                return Padding(
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Active Bookings',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF01102B),
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      GestureDetector(
+                        onTap: () => _navigateToTicket(activeBooking!),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(24),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.04),
+                                blurRadius: 15,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        FutureBuilder<Map<String, dynamic>?>(
+                                          future:
+                                              MockDatabase.instance
+                                                  .from('vehicles')
+                                                  .select(
+                                                    'brand_name, car_model, vehicle_type',
+                                                  )
+                                                  .eq(
+                                                    'id',
+                                                    activeBooking['vehicle_id'] ??
+                                                        '',
+                                                  )
+                                                  .maybeSingle()
+                                                  .build<
+                                                    Map<String, dynamic>?
+                                                  >(),
+                                          builder: (context, vSnap) {
+                                            final car = vSnap.data;
+                                            return Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  car != null
+                                                      ? "${car['brand_name']} ${car['car_model']}"
+                                                      : "Fetching Car...",
+                                                  style: const TextStyle(
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.w800,
+                                                    color: Color(0xFF01102B),
+                                                  ),
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  maxLines: 1,
+                                                ),
+                                                Text(
+                                                  car?['vehicle_type'] ?? '...',
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    color: Colors.grey[600],
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  maxLines: 1,
+                                                ),
+                                              ],
+                                            );
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          (activeBooking['status']
+                                                      .toString()
+                                                      .toUpperCase() ==
+                                                  'CREATED')
+                                              ? const Color(0xFFFFF4E5)
+                                              : const Color(0xFFE8F5E9),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Text(
+                                      (activeBooking['status'] as String)
+                                          .toUpperCase(),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color:
+                                            (activeBooking['status']
+                                                        .toString()
+                                                        .toUpperCase() ==
+                                                    'CREATED')
+                                                ? const Color(0xFFFF9800)
+                                                : const Color(0xFF4CAF50),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                child: Divider(height: 1),
+                              ),
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.calendar_today_outlined,
+                                    size: 16,
+                                    color: Colors.grey,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    formatDateTime(
+                                      activeBooking['scheduled_at'],
+                                    ),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
+                                      color: Color(0xFF01102B),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(
+                                    Icons.location_on_outlined,
+                                    size: 16,
+                                    color: Colors.grey,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  FutureBuilder<Map<String, dynamic>?>(
+                                    future:
+                                        MockDatabase.instance.client
+                                            .from('addresses')
+                                            .select('house_no, street, city')
+                                            .eq(
+                                              'user_id',
+                                              activeBooking['user_id'] ?? '',
+                                            )
+                                            .limit(1)
+                                            .maybeSingle()
+                                            .build<Map<String, dynamic>?>(),
+                                    builder: (context, aSnap) {
+                                      final addr = aSnap.data;
+                                      final addrText =
+                                          addr != null
+                                              ? [
+                                                    addr['house_no'],
+                                                    addr['street'],
+                                                    addr['city'],
+                                                  ]
+                                                  .where(
+                                                    (e) =>
+                                                        e != null &&
+                                                        e.toString().isNotEmpty,
+                                                  )
+                                                  .join(", ")
+                                              : "Fetching location...";
+                                      return Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              addrText,
+                                              style: TextStyle(
+                                                height: 1.4,
+                                                fontSize: 13,
+                                                color: Colors.grey[600],
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            // Quick Contact Row
+                                            if (activeBooking!['status']
+                                                        .toString()
+                                                        .toUpperCase() !=
+                                                    'CREATED' &&
+                                                activeBooking['status']
+                                                        .toString()
+                                                        .toUpperCase() !=
+                                                    'CANCELLED')
+                                              Padding(
+                                                padding: const EdgeInsets.only(
+                                                  top: 16,
+                                                ),
+                                                child: Row(
+                                                  children: [
+                                                    const Spacer(),
+                                                    // Msg Icon
+                                                    _buildShortcutIcon(
+                                                      Icons.chat_bubble_outline,
+                                                      activeBooking,
+                                                    ),
+                                                    const SizedBox(width: 12),
+                                                    // Call Icon
+                                                    _buildShortcutIcon(
+                                                      Icons.call,
+                                                      activeBooking,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    "Total Price",
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  Text(
+                                    "Rs. ${activeBooking['final_amount'] ?? activeBooking['base_amount'] ?? '0'}",
+                                    style: const TextStyle(
+                                      color: Color(0xFF01102B),
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 44,
+                                child:
+                                    _isLoading
+                                        ? const Center(
+                                          child: CircularProgressIndicator(),
+                                        )
+                                        : ElevatedButton(
+                                          onPressed:
+                                              () => _showCancelDialog(
+                                                activeBooking!['id'],
+                                              ),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(
+                                              0xFF01102B,
+                                            ),
+                                            foregroundColor: Colors.white,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            "Cancel Booking",
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+
+            const SizedBox(height: 28),
+
+            // Ongoing Services Section
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+              child: const Text(
+                'Ongoing Services',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF01102B),
                 ),
               ),
             ),
-          ),
+            const SizedBox(height: 16),
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: _activeOrderFuture,
+              builder: (context, snapshot) {
+                final allBookings = snapshot.data ?? [];
+                final ongoingBookings =
+                    allBookings.where((b) {
+                      final status =
+                          (b['status'] as String? ?? '').toUpperCase();
+                      return status == 'ASSIGNED' ||
+                          status == 'ARRIVED' ||
+                          status == 'IN_PROGRESS' ||
+                          status == 'PENDING';
+                    }).toList();
 
-          const SizedBox(height: 24),
-
-          // Active Orders Section
-          FutureBuilder<List<Map<String, dynamic>>>(
-            future: _activeOrderFuture,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const SizedBox.shrink();
-              }
-              if (snapshot.hasError) {
-                return const SizedBox.shrink();
-              }
-
-              final allBookings = snapshot.data ?? [];
-              Map<String, dynamic>? activeBooking;
-
-              if (allBookings.isNotEmpty) {
-                activeBooking = allBookings.firstWhere(
-                  (b) {
-                    final status = (b['status'] as String? ?? '').toUpperCase();
-                    return status == 'ASSIGNED' || status == 'CREATED' || status == 'IN_PROGRESS';
-                  },
-                  orElse: () => {},
-                );
-                if (activeBooking.isEmpty) activeBooking = null;
-              }
-
-              if (activeBooking == null) {
-                return const SizedBox.shrink();
-              }
-              
-              // Helper to get formatted date
-              String formatDateTime(String? iso) {
-                if (iso == null) return "N/A";
-                final dt = DateTime.parse(iso).toLocal();
-                return DateFormat('EEE, d MMM • h:mm a').format(dt);
-              }
-
-              return Padding(
-                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Active Bookings',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF01102B),
-                      ),
+                if (ongoingBookings.isEmpty) {
+                  return Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: horizontalPadding,
                     ),
-                    const SizedBox(height: 16),
-                    GestureDetector(
-                      onTap: () => _navigateToTicket(activeBooking!),
-                      child: Container(
+                    child: Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(30),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(24),
@@ -854,425 +1363,212 @@ class _HomeContentState extends State<HomeContent> {
                         ],
                       ),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    FutureBuilder<Map<String, dynamic>?>(
-                                      future: MockDatabase.instance
-                                          .from('vehicles')
-                                          .select('brand_name, car_model, vehicle_type')
-                                          .eq('id', activeBooking['vehicle_id'] ?? '')
-                                          .maybeSingle()
-                                          .build<Map<String, dynamic>?>(),
-                                      builder: (context, vSnap) {
-                                        final car = vSnap.data;
-                                        return Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              car != null 
-                                                ? "${car['brand_name']} ${car['car_model']}"
-                                                : "Fetching Car...",
-                                              style: const TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w800,
-                                                color: Color(0xFF01102B),
-                                              ),
-                                              overflow: TextOverflow.ellipsis,
-                                              maxLines: 1,
-                                            ),
-                                            Text(
-                                              car?['vehicle_type'] ?? '...',
-                                              style: TextStyle(
-                                                fontSize: 13,
-                                                color: Colors.grey[600],
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                              overflow: TextOverflow.ellipsis,
-                                              maxLines: 1,
-                                            ),
-                                          ],
-                                        );
-                                      }
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color:
-                                      (activeBooking['status'].toString().toUpperCase() == 'CREATED')
-                                          ? const Color(0xFFFFF4E5)
-                                          : const Color(0xFFE8F5E9),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  (activeBooking['status'] as String)
-                                      .toUpperCase(),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color:
-                                        (activeBooking['status'].toString().toUpperCase() == 'CREATED')
-                                            ? const Color(0xFFFF9800)
-                                            : const Color(0xFF4CAF50),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 16),
-                            child: Divider(height: 1),
-                          ),
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.calendar_today_outlined,
-                                size: 16,
-                                color: Colors.grey,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                formatDateTime(activeBooking['scheduled_at']),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                  color: Color(0xFF01102B),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(
-                                Icons.location_on_outlined,
-                                size: 16,
-                                color: Colors.grey,
-                              ),
-                              const SizedBox(width: 8),
-                              FutureBuilder<Map<String, dynamic>?>(
-                                future: MockDatabase.instance.client
-                                  .from('addresses')
-                                  .select('house_no, street, city')
-                                  .eq('user_id', activeBooking['user_id'] ?? '')
-                                  .limit(1)
-                                  .maybeSingle()
-                                  .build<Map<String, dynamic>?>(),
-                                builder: (context, aSnap) {
-                                  final addr = aSnap.data;
-                                  final addrText = addr != null 
-                                    ? [addr['house_no'], addr['street'], addr['city']].where((e) => e != null && e.toString().isNotEmpty).join(", ")
-                                    : "Fetching location...";
-                                  return Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          addrText,
-                                          style: TextStyle(
-                                            height: 1.4,
-                                            fontSize: 13,
-                                            color: Colors.grey[600],
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        // Quick Contact Row
-                                        if (activeBooking!['status'].toString().toUpperCase() != 'CREATED' &&
-                                            activeBooking['status'].toString().toUpperCase() != 'CANCELLED')
-                                          Padding(
-                                            padding: const EdgeInsets.only(top: 16),
-                                            child: Row(
-                                              children: [
-                                                const Spacer(),
-                                                // Msg Icon
-                                                _buildShortcutIcon(
-                                                  Icons.chat_bubble_outline,
-                                                  activeBooking,
-                                                ),
-                                                const SizedBox(width: 12),
-                                                // Call Icon
-                                                _buildShortcutIcon(
-                                                  Icons.call,
-                                                  activeBooking,
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  );
-                                }
-                              ),
-                            ],
+                          Icon(
+                            Icons.running_with_errors_outlined,
+                            size: 48,
+                            color: Colors.grey[300],
                           ),
                           const SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                "Total Price",
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              Text(
-                                "Rs. ${activeBooking['final_amount'] ?? activeBooking['base_amount'] ?? '0'}",
-                                style: const TextStyle(
-                                  color: Color(0xFF01102B),
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 20),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 44,
-                            child:
-                                _isLoading
-                                    ? const Center(
-                                      child: CircularProgressIndicator(),
-                                    )
-                                    : ElevatedButton(
-                                      onPressed:
-                                          () => _showCancelDialog(
-                                            activeBooking!['id'],
-                                          ),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(
-                                          0xFF01102B,
-                                        ),
-                                        foregroundColor: Colors.white,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                      ),
-                                      child: const Text(
-                                        "Cancel Booking",
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
+                          Text(
+                            'No Ongoing Services',
+                            style: TextStyle(
+                              color: Colors.grey[500],
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                ],
-              ),
-            );
-            },
-          ),
+                  );
+                }
 
-          const SizedBox(height: 28),
+                return Column(
+                  children:
+                      ongoingBookings.map((booking) {
+                        final statusStr =
+                            booking['status'].toString().toUpperCase();
 
-          // Ongoing Services Section
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-            child: const Text(
-              'Ongoing Services',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF01102B),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-            FutureBuilder<List<Map<String, dynamic>>>(
-            future: _activeOrderFuture,
-            builder: (context, snapshot) {
-              final allBookings = snapshot.data ?? [];
-              final ongoingBookings = allBookings.where((b) {
-                final status = (b['status'] as String? ?? '').toUpperCase();
-                return status == 'ASSIGNED' || status == 'ARRIVED' || status == 'IN_PROGRESS' || status == 'PENDING';
-              }).toList();
-
-              if (ongoingBookings.isEmpty) {
-                return Padding(
-                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(30),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
-                          blurRadius: 15,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.running_with_errors_outlined,
-                          size: 48,
-                          color: Colors.grey[300],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No Ongoing Services',
-                          style: TextStyle(
-                            color: Colors.grey[500],
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                        return Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: horizontalPadding,
+                            vertical: 8,
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }
-
-              return Column(
-                children: ongoingBookings.map((booking) {
-                  final statusStr = booking['status'].toString().toUpperCase();
-                  
-                  return Padding(
-                    padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8),
-                    child: GestureDetector(
-                      onTap: () => _navigateToTicket(booking),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.03),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF6F6F6),
-                                    borderRadius: BorderRadius.circular(12),
+                          child: GestureDetector(
+                            onTap: () => _navigateToTicket(booking),
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.03),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
                                   ),
-                                  child: Icon(
-                                    statusStr == 'IN_PROGRESS' ? Icons.play_circle_fill : Icons.directions_car, 
-                                    color: const Color(0xFF01102B), 
-                                    size: 20
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                ],
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
                                     children: [
-                                      FutureBuilder<Map<String, dynamic>?>(
-                                        future: MockDatabase.instance.from('vehicles').select('brand_name, car_model').eq('id', booking['vehicle_id'] ?? '').maybeSingle().build<Map<String, dynamic>?>(),
-                                        builder: (context, vSnap) {
-                                          final car = vSnap.data;
-                                          return Text(
-                                            car != null ? "${car['brand_name']} ${car['car_model']}" : "Car Details",
-                                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-                                          );
-                                        }
+                                      Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF6F6F6),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          statusStr == 'IN_PROGRESS'
+                                              ? Icons.play_circle_fill
+                                              : Icons.directions_car,
+                                          color: const Color(0xFF01102B),
+                                          size: 20,
+                                        ),
                                       ),
-                                      Text(
-                                        DateFormat('d MMM • h:mm a').format(DateTime.parse(booking['scheduled_at'])),
-                                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            FutureBuilder<
+                                              Map<String, dynamic>?
+                                            >(
+                                              future:
+                                                  MockDatabase.instance
+                                                      .from('vehicles')
+                                                      .select(
+                                                        'brand_name, car_model',
+                                                      )
+                                                      .eq(
+                                                        'id',
+                                                        booking['vehicle_id'] ??
+                                                            '',
+                                                      )
+                                                      .maybeSingle()
+                                                      .build<
+                                                        Map<String, dynamic>?
+                                                      >(),
+                                              builder: (context, vSnap) {
+                                                final car = vSnap.data;
+                                                return Text(
+                                                  car != null
+                                                      ? "${car['brand_name']} ${car['car_model']}"
+                                                      : "Car Details",
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.w800,
+                                                    fontSize: 14,
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                            Text(
+                                              DateFormat(
+                                                'd MMM • h:mm a',
+                                              ).format(
+                                                DateTime.parse(
+                                                  booking['scheduled_at'],
+                                                ),
+                                              ),
+                                              style: TextStyle(
+                                                color: Colors.grey[600],
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Text(
+                                            "Rs. ${booking['final_amount']}",
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 14,
+                                              color: Color(0xFF01102B),
+                                            ),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color:
+                                                  statusStr == 'IN_PROGRESS'
+                                                      ? Colors.blue[50]
+                                                      : Colors.green[50],
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: Text(
+                                              statusStr,
+                                              style: TextStyle(
+                                                color:
+                                                    statusStr == 'IN_PROGRESS'
+                                                        ? Colors.blue[700]
+                                                        : Colors.green[700],
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
-                                ),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      "Rs. ${booking['final_amount']}",
-                                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF01102B)),
-                                    ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: statusStr == 'IN_PROGRESS' ? Colors.blue[50] : Colors.green[50],
-                                        borderRadius: BorderRadius.circular(8),
+                                  const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 12),
+                                    child: Divider(height: 1),
+                                  ),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 36,
+                                    child: ElevatedButton(
+                                      onPressed:
+                                          () =>
+                                              _showCancelDialog(booking['id']),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.red[50],
+                                        foregroundColor: Colors.red,
+                                        elevation: 0,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
                                       ),
-                                      child: Text(
-                                        statusStr,
+                                      child: const Text(
+                                        "Cancel Service",
                                         style: TextStyle(
-                                          color: statusStr == 'IN_PROGRESS' ? Colors.blue[700] : Colors.green[700],
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 12,
                                         ),
                                       ),
                                     ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 12),
-                              child: Divider(height: 1),
-                            ),
-                            SizedBox(
-                              width: double.infinity,
-                              height: 36,
-                              child: ElevatedButton(
-                                onPressed: () => _showCancelDialog(booking['id']),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red[50],
-                                  foregroundColor: Colors.red,
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
                                   ),
-                                ),
-                                child: const Text(
-                                  "Cancel Service",
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 12,
-                                  ),
-                                ),
+                                ],
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              );
-            }
-          ),
-          const SizedBox(height: 100),
-        ],
+                          ),
+                        );
+                      }).toList(),
+                );
+              },
+            ),
+            const SizedBox(height: 100),
+          ],
+        ),
       ),
-    ),
     );
   }
 
@@ -1281,29 +1577,58 @@ class _HomeContentState extends State<HomeContent> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.white)),
+      builder:
+          (context) => const Center(
+            child: CircularProgressIndicator(color: Colors.white),
+          ),
     );
 
     try {
       // 2. Fetch all related data
-      final vehicle = await MockDatabase.instance.from('vehicles').select().eq('id', booking['vehicle_id']).maybeSingle().build<Map<String, dynamic>?>();
-      final address = await MockDatabase.instance.from('addresses').select().eq('user_id', booking['user_id']).limit(1).maybeSingle().build<Map<String, dynamic>?>();
-      
+      final vehicle =
+          await MockDatabase.instance
+              .from('vehicles')
+              .select()
+              .eq('id', booking['vehicle_id'])
+              .maybeSingle()
+              .build<Map<String, dynamic>?>();
+      final address =
+          await MockDatabase.instance
+              .from('addresses')
+              .select()
+              .eq('user_id', booking['user_id'])
+              .limit(1)
+              .maybeSingle()
+              .build<Map<String, dynamic>?>();
+
       Map<String, dynamic>? worker;
       if (booking['worker_id'] != null) {
-        final workerRec = await MockDatabase.instance.from('workers').select('user_id').eq('id', booking['worker_id']).maybeSingle().build<Map<String, dynamic>?>();
+        final workerRec =
+            await MockDatabase.instance
+                .from('workers')
+                .select('user_id')
+                .eq('id', booking['worker_id'])
+                .maybeSingle()
+                .build<Map<String, dynamic>?>();
         if (workerRec != null) {
-          worker = await MockDatabase.instance.from('users').select().eq('id', workerRec['user_id']).maybeSingle().build<Map<String, dynamic>?>();
+          worker =
+              await MockDatabase.instance
+                  .from('users')
+                  .select()
+                  .eq('id', workerRec['user_id'])
+                  .maybeSingle()
+                  .build<Map<String, dynamic>?>();
         }
       }
 
       // 3. Map services back to names (simulated mapping)
-      final List<String> serviceNames = (booking['service_id'] as List).map((id) {
-        // Deterministic reverse mapping for mock
-        if (id.toString().contains('b')) return 'Exterior Wash';
-        if (id.toString().contains('c')) return 'Interior Cleaning';
-        return 'Full Car Wash';
-      }).toList();
+      final List<String> serviceNames =
+          (booking['service_id'] as List).map((id) {
+            // Deterministic reverse mapping for mock
+            if (id.toString().contains('b')) return 'Exterior Wash';
+            if (id.toString().contains('c')) return 'Interior Cleaning';
+            return 'Full Car Wash';
+          }).toList();
 
       if (!mounted) return;
       Navigator.pop(context); // Close loading
@@ -1311,29 +1636,37 @@ class _HomeContentState extends State<HomeContent> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => ETicketPage(
-            bookingId: booking['id'],
-            qrToken: booking['qr_token'],
-            vehicle: {
-              'type': vehicle?['vehicle_type'] ?? 'Car',
-              'brand': vehicle?['brand_name'] ?? 'Car',
-              'model': vehicle?['car_model'] ?? 'N/A',
-              'license': vehicle?['license'] ?? 'N/A',
-            },
-            selectedServices: serviceNames,
-            selectedDate: DateTime.parse(booking['scheduled_at']),
-            selectedTime: DateFormat('h:mm a').format(DateTime.parse(booking['scheduled_at'])),
-            addressLabel: 'Service Location',
-            addressText: address != null ? "${address['house_no']} ${address['street']}, ${address['city']}" : "N/A",
-            totalPrice: (booking['final_amount'] ?? 0).toDouble(),
-            worker: worker,
-          ),
+          builder:
+              (context) => ETicketPage(
+                bookingId: booking['id'],
+                qrToken: booking['qr_token'],
+                vehicle: {
+                  'type': vehicle?['vehicle_type'] ?? 'Car',
+                  'brand': vehicle?['brand_name'] ?? 'Car',
+                  'model': vehicle?['car_model'] ?? 'N/A',
+                  'license': vehicle?['license'] ?? 'N/A',
+                },
+                selectedServices: serviceNames,
+                selectedDate: DateTime.parse(booking['scheduled_at']).toLocal(),
+                selectedTime: DateFormat(
+                  'h:mm a',
+                ).format(DateTime.parse(booking['scheduled_at']).toLocal()),
+                addressLabel: 'Service Location',
+                addressText:
+                    address != null
+                        ? "${address['house_no']} ${address['street']}, ${address['city']}"
+                        : "N/A",
+                totalPrice: (booking['final_amount'] ?? 0).toDouble(),
+                worker: worker,
+              ),
         ),
       );
     } catch (e) {
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Error: $e")));
       }
     }
   }
@@ -1372,7 +1705,10 @@ class _HomeContentState extends State<HomeContent> {
                         .build<void>();
 
                     if (mounted) {
-                      setState(() => _isLoading = false);
+                      setState(() {
+                        _isLoading = false;
+                        _activeOrderFuture = _fetchActiveOrders();
+                      });
                       messenger.showSnackBar(
                         const SnackBar(
                           content: Text("Booking cancelled successfully"),

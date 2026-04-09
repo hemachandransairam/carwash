@@ -15,6 +15,9 @@ class PaymentMethodsPage extends StatefulWidget {
   final String addressText;
   final double latitude;
   final double longitude;
+  final String? couponId;
+  final String? couponCode;
+  final double couponDiscount;
 
   const PaymentMethodsPage({
     super.key,
@@ -29,6 +32,9 @@ class PaymentMethodsPage extends StatefulWidget {
     required this.addressText,
     this.latitude = 0.0,
     this.longitude = 0.0,
+    this.couponId,
+    this.couponCode,
+    this.couponDiscount = 0.0,
   });
 
   @override
@@ -156,11 +162,14 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
         'service_end': exactEndDateTime.toUtc().toIso8601String(), 
         'status': 'IN_PROGRESS',
         'base_amount': widget.totalPrice,
-        'discount_amount': 0.0,
-        'final_amount': widget.totalPrice + 199 + 20,
+        'discount_amount': widget.couponDiscount,
+        'final_amount': widget.totalPrice,
+        'coupon_id': widget.couponId,
         'qr_token': 'QR-${DateTime.now().millisecondsSinceEpoch}',
         'latitude': widget.latitude,
         'longitude': widget.longitude,
+        'street': widget.addressText,
+        'total_price': widget.totalPrice.toString(),
       }).select().single().build<Map<String, dynamic>>();
 
       final bookingId = response['id'];
@@ -175,12 +184,26 @@ class _PaymentMethodsPageState extends State<PaymentMethodsPage> {
         final bvId = bvResponse['id'];
 
         // 5. Create service junction rows for EACH service for THIS vehicle
-        // (Allows per-vehicle checklists and service tracking)
         for (var sId in widget.selectedServiceIds) {
           await MockDatabase.instance.client.from('booking_vehicle_services').insert({
             'booking_vehicle_id': bvId,
             'service_id': sId,
           }).build();
+        }
+      }
+
+      // 6. Log coupon usage if a coupon was applied
+      if (widget.couponId != null) {
+        try {
+          await MockDatabase.instance.from('coupon_usage').insert({
+            'coupon_id': widget.couponId,
+            'user_id': user['id'],
+            'booking_id': bookingId,
+            'status': 'APPLIED',
+            'created_at': DateTime.now().toUtc().toIso8601String(),
+          }).build();
+        } catch (_) {
+          // Non-critical — booking already created
         }
       }
 

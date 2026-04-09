@@ -55,15 +55,43 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
       final user = MockDatabase.instance.auth.currentUser;
       if (user == null) return;
 
+      // Check if this phone is pre-registered in an apartment plan
+      final phone = user['phone']?.toString() ?? '';
+      final aptResident = await MockDatabase.instance.client
+          .from('apartment_residents')
+          .select('apartment_name, flat_number, block, apartment_plan_type')
+          .eq('phone', phone)
+          .maybeSingle()
+          .build<Map<String, dynamic>?>();
+
+      String? apartmentId;
+      String? flatNumber;
+      String? block;
+      bool isApartmentResident = false;
+      String? subscriptionTier;
+
+      if (aptResident != null) {
+        isApartmentResident = true;
+        apartmentId = aptResident['apartment_name']?.toString();
+        flatNumber = aptResident['flat_number']?.toString();
+        block = aptResident['block']?.toString();
+        subscriptionTier = aptResident['apartment_plan_type']?.toString() ?? 'APARTMENT_PLAN';
+      }
+
       final result = await MockDatabase.instance.from('users').upsert({
         if (user['id'] != null) 'id': user['id'],
         'name': name,
-        'phone': user['phone'],
+        'phone': phone,
         'email': _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
         'gender': _selectedGender,
         'gst_number': _gstController.text.trim().isEmpty ? null : _gstController.text.trim(),
         'date_of_birth': _selectedDob?.toIso8601String(),
         'role': 'USER',
+        'is_apartment_resident': isApartmentResident,
+        if (subscriptionTier != null) 'subscription_tier': subscriptionTier,
+        if (apartmentId != null) 'apartment_name': apartmentId,
+        if (flatNumber != null) 'flat_number': flatNumber,
+        if (block != null) 'block': block,
         'created_at': DateTime.now().toUtc().toIso8601String(),
       }).select().maybeSingle().build<Map<String, dynamic>?>();
 

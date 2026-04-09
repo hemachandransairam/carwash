@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/services/mock_database.dart';
 
 class ChatPage extends StatefulWidget {
@@ -15,6 +14,58 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage> {
   final TextEditingController _messageController = TextEditingController();
+  Map<String, dynamic>? _workerInfo;
+  bool _isLoadingWorker = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _workerInfo = widget.worker;
+    if (_workerInfo == null && widget.bookingId != null) {
+      _fetchWorkerInfo(); 
+    }
+  }
+
+  Future<void> _fetchWorkerInfo() async {
+    setState(() => _isLoadingWorker = true);
+    try {
+      // 1. Get the booking to find the worker_id
+      final booking = await MockDatabase.instance.client
+          .from('bookings')
+          .select('worker_id')
+          .eq('id', widget.bookingId!)
+          .maybeSingle();
+
+      if (booking != null && booking['worker_id'] != null) {
+        // 2. Get the worker's user_id
+        final workerRec = await MockDatabase.instance.client
+            .from('workers')
+            .select('user_id')
+            .eq('id', booking['worker_id'])
+            .maybeSingle();
+
+        if (workerRec != null) {
+          // 3. Get the actual user profile (name, pic)
+          final userProfile = await MockDatabase.instance.client
+              .from('users')
+              .select('name, profile_pic')
+              .eq('id', workerRec['user_id'])
+              .maybeSingle();
+
+          if (mounted) {
+            setState(() {
+              _workerInfo = userProfile;
+              _isLoadingWorker = false;
+            });
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint("Error fetching worker info: $e");
+    }
+    if (mounted) setState(() => _isLoadingWorker = false);
+  }
 
   Stream<List<Map<String, dynamic>>> get _messageStream =>
       MockDatabase.instance.client
@@ -60,24 +111,29 @@ class _ChatPageState extends State<ChatPage> {
             CircleAvatar(
               radius: 18,
               backgroundColor: Colors.white24,
-              backgroundImage: widget.worker?['profile_pic'] != null
-                  ? NetworkImage(widget.worker!['profile_pic'])
+              backgroundImage: _workerInfo?['profile_pic'] != null
+                  ? NetworkImage(_workerInfo!['profile_pic'])
                   : null,
-              child: widget.worker?['profile_pic'] == null
+              child: (_workerInfo?['profile_pic'] == null && !_isLoadingWorker)
                   ? const Icon(Icons.person, color: Colors.white, size: 20)
-                  : null,
+                  : _isLoadingWorker 
+                    ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : null,
             ),
             const SizedBox(width: 12),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.worker?['name'] ?? 'Worker',
+                  _workerInfo?['name'] ?? (_isLoadingWorker ? 'Loading...' : 'Technician'),
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
-                const Text(
-                  'Online',
-                  style: TextStyle(fontSize: 11, color: Colors.greenAccent),
+                Text(
+                  _isLoadingWorker ? 'Fetching details...' : 'Online',
+                  style: TextStyle(
+                    fontSize: 11, 
+                    color: _isLoadingWorker ? Colors.white70 : Colors.greenAccent
+                  ),
                 ),
               ],
             ),
