@@ -11,10 +11,14 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'chat_page.dart';
+import 'feedback_page.dart';
 import '../core/services/mock_database.dart';
 import 'cab_owner/cab_owner_home_screen.dart';
+import 'post_service_payment_page.dart';
+import 'dart:async';
 
-class ETicketPage extends StatelessWidget {
+
+class ETicketPage extends StatefulWidget {
   final String? bookingId;
   final String? qrToken;
   final Map<String, dynamic> vehicle;
@@ -39,6 +43,69 @@ class ETicketPage extends StatelessWidget {
     required this.totalPrice,
     this.worker,
   });
+
+  @override
+  State<ETicketPage> createState() => _ETicketPageState();
+}
+
+class _ETicketPageState extends State<ETicketPage> {
+  StreamSubscription? _statusSubscription;
+  bool _hasOpenedPayment = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Automatically show feedback dialog after payment completion (arriving at this page)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.bookingId != null && widget.worker != null) {
+        FeedbackPage.showFeedbackDialog(
+          context,
+          bookingId: widget.bookingId!,
+          toUserId: widget.worker!['id'] ?? '',
+          workerName: widget.worker!['name'],
+        );
+      }
+    });
+
+    // Listen for status updates to trigger post-service payment flow
+    if (widget.bookingId != null) {
+      _statusSubscription = MockDatabase.instance.client
+          .from('bookings')
+          .stream(primaryKey: ['id'])
+          .eq('id', widget.bookingId!)
+          .listen((List<Map<String, dynamic>> data) {
+            if (data.isNotEmpty) {
+              final status = data.first['status'];
+              if (status == 'WORK_COMPLETED' && !_hasOpenedPayment) {
+                _hasOpenedPayment = true;
+                _navigateToPayment();
+              }
+            }
+          });
+    }
+  }
+
+  void _navigateToPayment() {
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PostServicePaymentPage(
+          bookingId: widget.bookingId!,
+          amount: widget.totalPrice,
+          toUserId: widget.worker?['id'] ?? '',
+          workerName: widget.worker?['name'] ?? 'Worker',
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _statusSubscription?.cancel();
+    super.dispose();
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -246,14 +313,14 @@ class ETicketPage extends StatelessWidget {
           children: [
             _buildInfoItem(
               "CAR DETAILS",
-              vehicle['model'] != null && vehicle['model']!.isNotEmpty
-                  ? vehicle['model']!
-                  : vehicle['name'] ?? 'Car',
+              widget.vehicle['model'] != null && widget.vehicle['model']!.isNotEmpty
+                  ? widget.vehicle['model']!
+                  : widget.vehicle['name'] ?? 'Car',
               flex: 3,
             ),
             _buildInfoItem(
               "CAR TYPE",
-              vehicle['type'] ?? 'Sedan',
+              widget.vehicle['type'] ?? 'Sedan',
               flex: 1,
               align: CrossAxisAlignment.end,
             ),
@@ -265,12 +332,12 @@ class ETicketPage extends StatelessWidget {
           children: [
             _buildInfoItem(
               "SERVICES",
-              selectedServices.join('\n'), // Dynamic Services
+              widget.selectedServices.join('\n'), // Dynamic Services
               flex: 3,
             ),
             _buildInfoItem(
               "LOCATION",
-              addressText,
+              widget.addressText,
               flex: 1,
               align: CrossAxisAlignment.end,
             ),
@@ -282,12 +349,12 @@ class ETicketPage extends StatelessWidget {
           children: [
             _buildInfoItem(
               "DATE & TIME",
-              "${DateFormat('d MMM yyyy').format(selectedDate)} - $selectedTime",
+              "${DateFormat('d MMM yyyy').format(widget.selectedDate)} - ${widget.selectedTime}",
               flex: 3,
             ),
             _buildInfoItem(
               "AMOUNT",
-              "Rs. ${totalPrice.toStringAsFixed(0)}",
+              "Rs. ${widget.totalPrice.toStringAsFixed(0)}",
               flex: 1,
               align: CrossAxisAlignment.end,
               subtitle: "(incl tax)",
@@ -355,11 +422,11 @@ class ETicketPage extends StatelessWidget {
           CircleAvatar(
             backgroundColor: Colors.white,
             radius: 20,
-            backgroundImage: worker?['profile_pic'] != null
-                ? NetworkImage(worker!['profile_pic'])
+            backgroundImage: widget.worker?['profile_pic'] != null
+                ? NetworkImage(widget.worker!['profile_pic'])
                 : null,
             child:
-                worker?['profile_pic'] == null
+                widget.worker?['profile_pic'] == null
                     ? const Icon(Icons.person, color: Colors.grey)
                     : null,
           ),
@@ -369,14 +436,14 @@ class ETicketPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  worker?['name'] ?? "Tom Holland", // Fallback for mock/preview
+                  widget.worker?['name'] ?? "Tom Holland", // Fallback for mock/preview
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 13,
                   ),
                 ),
                 Text(
-                  worker?['phone'] ?? "WynkWash Team",
+                  widget.worker?['phone'] ?? "WynkWash Team",
                   style: const TextStyle(
                     color: Colors.grey,
                     fontSize: 11,
@@ -393,8 +460,8 @@ class ETicketPage extends StatelessWidget {
                 context,
                 MaterialPageRoute(
                   builder: (context) => ChatPage(
-                    worker: worker,
-                    bookingId: bookingId,
+                    worker: widget.worker,
+                    bookingId: widget.bookingId,
                   ),
                 ),
               );
@@ -439,8 +506,8 @@ class ETicketPage extends StatelessWidget {
 
   String _getQRData({bool urlEncoded = true}) {
     final Map<String, dynamic> data = {
-      'booking_id': bookingId ?? "N/A",
-      'qr_token': qrToken ?? "N/A",
+      'booking_id': widget.bookingId ?? "N/A",
+      'qr_token': widget.qrToken ?? "N/A",
     };
     final jsonStr = jsonEncode(data);
     return urlEncoded ? Uri.encodeComponent(jsonStr) : jsonStr;
@@ -616,19 +683,19 @@ class ETicketPage extends StatelessWidget {
                   pw.SizedBox(height: 20),
                   pw.Text("BOOKING DETAILS", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.blueGrey700)),
                   pw.SizedBox(height: 12),
-                  _buildPdfRow("Booking ID", bookingId ?? "N/A"),
-                  _buildPdfRow("Schedule", "${DateFormat('EEE, d MMM yyyy').format(selectedDate)} • $selectedTime"),
-                  _buildPdfRow("Service Location", addressText),
+                  _buildPdfRow("Booking ID", widget.bookingId ?? "N/A"),
+                  _buildPdfRow("Schedule", "${DateFormat('EEE, d MMM yyyy').format(widget.selectedDate)} • ${widget.selectedTime}"),
+                  _buildPdfRow("Service Location", widget.addressText),
                   pw.SizedBox(height: 30),
                   pw.Text("VEHICLE INFORMATION", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.blueGrey700)),
                   pw.SizedBox(height: 12),
-                  _buildPdfRow("Vehicle", "${vehicle['brand']} ${vehicle['model']}"),
-                  _buildPdfRow("Type", vehicle['type'] ?? "N/A"),
-                  _buildPdfRow("License Plate", vehicle['license'] ?? "N/A"),
+                  _buildPdfRow("Vehicle", "${widget.vehicle['brand']} ${widget.vehicle['model']}"),
+                  _buildPdfRow("Type", widget.vehicle['type'] ?? "N/A"),
+                  _buildPdfRow("License Plate", widget.vehicle['license'] ?? "N/A"),
                   pw.SizedBox(height: 30),
                   pw.Text("SERVICES", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.blueGrey700)),
                   pw.SizedBox(height: 12),
-                  ...selectedServices.map((s) => pw.Bullet(text: s, style: const pw.TextStyle(fontSize: 12))),
+                  ...widget.selectedServices.map((s) => pw.Bullet(text: s, style: const pw.TextStyle(fontSize: 12))),
                   pw.SizedBox(height: 40),
                   pw.Container(
                     padding: const pw.EdgeInsets.all(16),
@@ -637,7 +704,7 @@ class ETicketPage extends StatelessWidget {
                       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                       children: [
                         pw.Text("Total Amount Paid", style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
-                        pw.Text("Rs. $totalPrice", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: PdfColors.green700)),
+                        pw.Text("Rs. ${widget.totalPrice}", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: PdfColors.green700)),
                       ],
                     ),
                   ),

@@ -3,12 +3,47 @@ import '../core/services/mock_database.dart';
 import '../widgets/custom_widgets.dart';
 
 class FeedbackPage extends StatefulWidget {
-  /// Pass a specific bookingId to rate a completed booking.
-  /// If null, the page shows a list of completed bookings to choose from.
-  final String? bookingId;
+  final String bookingId;
+  final String toUserId; // The worker/employee being rated
   final String? workerName;
 
-  const FeedbackPage({super.key, this.bookingId, this.workerName});
+  const FeedbackPage({
+    super.key,
+    required this.bookingId,
+    required this.toUserId,
+    this.workerName,
+  });
+
+  /// Static method to show the feedback dialog anywhere in the app
+  static void showFeedbackDialog(
+    BuildContext context, {
+    required String bookingId,
+    required String toUserId,
+    String? workerName,
+  }) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: "Feedback",
+      transitionDuration: const Duration(milliseconds: 400),
+      pageBuilder: (context, anim1, anim2) {
+        return FeedbackPage(
+          bookingId: bookingId,
+          toUserId: toUserId,
+          workerName: workerName,
+        );
+      },
+      transitionBuilder: (context, anim1, anim2, child) {
+        return ScaleTransition(
+          scale: CurvedAnimation(parent: anim1, curve: Curves.easeOutBack),
+          child: FadeTransition(
+            opacity: CurvedAnimation(parent: anim1, curve: Curves.easeIn),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
 
   @override
   State<FeedbackPage> createState() => _FeedbackPageState();
@@ -18,233 +53,11 @@ class _FeedbackPageState extends State<FeedbackPage> {
   int _rating = 0;
   final TextEditingController _feedbackController = TextEditingController();
   bool _isSubmitting = false;
-  List<Map<String, dynamic>> _completedBookings = [];
-  String? _selectedBookingId;
-  bool _isLoadingBookings = false;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.bookingId != null) {
-      _selectedBookingId = widget.bookingId;
-    } else {
-      _loadCompletedBookings();
-    }
-  }
-
-  Future<void> _loadCompletedBookings() async {
-    setState(() => _isLoadingBookings = true);
-    final user = MockDatabase.instance.auth.currentUser;
-    if (user == null) return;
-    try {
-      final data = await MockDatabase.instance
-          .from('bookings')
-          .select()
-          .eq('user_id', user['id'])
-          .eq('status', 'COMPLETED')
-          .build<List<Map<String, dynamic>>>();
-      setState(() {
-        _completedBookings = data;
-        _isLoadingBookings = false;
-      });
-    } catch (_) {
-      setState(() => _isLoadingBookings = false);
-    }
-  }
 
   @override
   void dispose() {
     _feedbackController.dispose();
     super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
-      appBar: buildGlobalAppBar(context: context, title: "Rate Your Service"),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            children: [
-              const SizedBox(height: 20),
-              const Text(
-                "How was your experience?",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF01102B),
-                ),
-              ),
-              const SizedBox(height: 12),
-              if (widget.workerName != null)
-                Text(
-                  "Rate your professional: ${widget.workerName}",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                ),
-              const SizedBox(height: 8),
-              Text(
-                "Your rating is private and only visible to our team.",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.grey[500],
-                  fontSize: 13,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              // Booking selector
-              if (widget.bookingId == null) ...[
-                if (_isLoadingBookings)
-                  const CircularProgressIndicator()
-                else if (_completedBookings.isEmpty)
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Text(
-                      "No completed bookings to rate yet.",
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  )
-                else
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.grey.shade200),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        isExpanded: true,
-                        hint: const Text("Select a completed booking"),
-                        value: _selectedBookingId,
-                        items: _completedBookings.map((b) {
-                          final id = b['id']?.toString() ?? '';
-                          final date = b['scheduled_at'] != null
-                              ? DateTime.tryParse(b['scheduled_at'])
-                              : null;
-                          final label = date != null
-                              ? 'Booking ${id.substring(0, 6).toUpperCase()} — ${date.day}/${date.month}/${date.year}'
-                              : 'Booking ${id.substring(0, 6).toUpperCase()}';
-                          return DropdownMenuItem(value: id, child: Text(label));
-                        }).toList(),
-                        onChanged: (v) => setState(() => _selectedBookingId = v),
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 24),
-              ],
-
-              // Star rating
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 15,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(5, (index) {
-                    return IconButton(
-                      onPressed: () => setState(() => _rating = index + 1),
-                      icon: Icon(
-                        index < _rating ? Icons.star : Icons.star_border,
-                        color: index < _rating
-                            ? const Color(0xFFFFD700)
-                            : Colors.grey.shade300,
-                        size: 45,
-                      ),
-                    );
-                  }),
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Comment box
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 15,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: TextField(
-                  controller: _feedbackController,
-                  maxLines: 6,
-                  decoration: InputDecoration(
-                    hintText: "Tell us about your experience (optional)...",
-                    hintStyle: TextStyle(
-                      color: Colors.grey.shade400,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    border: InputBorder.none,
-                  ),
-                  style: const TextStyle(
-                    fontSize: 15,
-                    color: Color(0xFF01102B),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 40),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _isSubmitting ? null : _submitFeedback,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF01102B),
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: Colors.grey,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: _isSubmitting
-                      ? const SizedBox(
-                          height: 24,
-                          width: 24,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Text(
-                          "Submit Rating",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                ),
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   Future<void> _submitFeedback() async {
@@ -258,34 +71,28 @@ class _FeedbackPageState extends State<FeedbackPage> {
       return;
     }
 
-    if (_selectedBookingId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please select a booking to rate"),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
     setState(() => _isSubmitting = true);
 
     try {
       final user = MockDatabase.instance.auth.currentUser;
-      await MockDatabase.instance.from('feedback').insert({
-        'user_id': user?['id'],
-        'booking_id': _selectedBookingId,
+      if (user == null) throw Exception("User not logged in");
+
+      // Using the user's provided SQL schema: public.feedbacks
+      await MockDatabase.instance.client.from('feedbacks').insert({
+        'booking_id': widget.bookingId,
+        'from_user_id': user['id'],
+        'to_user_id': widget.toUserId,
         'rating': _rating,
         'comment': _feedbackController.text.trim().isEmpty
             ? null
             : _feedbackController.text.trim(),
-        'rated_by': 'CUSTOMER',
-        'created_at': DateTime.now().toIso8601String(),
-      }).build<void>();
+        'role': 'EMPLOYEE', // Default as per SQL schema
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      }).build();
 
       if (mounted) {
         setState(() => _isSubmitting = false);
-        _showSuccessDialog();
+        _showSuccessAnimation();
       }
     } catch (e) {
       if (mounted) {
@@ -300,68 +107,212 @@ class _FeedbackPageState extends State<FeedbackPage> {
     }
   }
 
-  void _showSuccessDialog() {
+  void _showSuccessAnimation() {
+    Navigator.of(context).pop(); // Close feedback dialog
     showDialog(
       context: context,
-      barrierDismissible: false,
       builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: Container(
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(30),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                height: 120,
-                width: 120,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF01102B).withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.check_circle_rounded,
-                  color: Color(0xFF01102B),
-                  size: 80,
-                ),
-              ),
+              const Icon(Icons.check_circle_rounded, color: Colors.green, size: 80),
               const SizedBox(height: 24),
               const Text(
                 "Thank You!",
                 style: TextStyle(
-                  fontSize: 26,
+                  fontSize: 24,
                   fontWeight: FontWeight.w800,
                   color: Color(0xFF01102B),
                 ),
               ),
               const SizedBox(height: 12),
               Text(
-                "Your rating helps us improve our service.",
+                "Your feedback helps us provide better service.",
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey[600], fontSize: 15),
+                style: TextStyle(color: Colors.grey[600], fontSize: 16),
               ),
               const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    Navigator.pop(context);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF01102B),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: const Text(
-                    "Done",
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
+              buildPrimaryButton(
+                text: "Done",
+                onTap: () => Navigator.pop(context),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Center(
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.9,
+          constraints: const BoxConstraints(maxWidth: 400),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(30),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const SizedBox(width: 48), // Spacer
+                      const Text(
+                        "Feedback",
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF01102B),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close, color: Colors.grey),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.grey[100],
+                          padding: const EdgeInsets.all(8),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Container(
+                    width: 70,
+                    height: 70,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF01102B).withOpacity(0.05),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.star_rounded,
+                      color: Color(0xFF01102B),
+                      size: 40,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    "Rate Your Experience",
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF01102B),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.workerName != null
+                        ? "How was the service provided by ${widget.workerName}?"
+                        : "How was your experience with our service?",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(5, (index) {
+                      final starRating = index + 1;
+                      return GestureDetector(
+                        onTap: () => setState(() => _rating = starRating),
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween(
+                            begin: 1.0,
+                            end: _rating >= starRating ? 1.2 : 1.0,
+                          ),
+                          duration: const Duration(milliseconds: 200),
+                          builder: (context, scale, child) {
+                            return Transform.scale(
+                              scale: scale,
+                              child: Icon(
+                                _rating >= starRating
+                                    ? Icons.star_rounded
+                                    : Icons.star_outline_rounded,
+                                color: _rating >= starRating
+                                    ? const Color(0xFFFFD700)
+                                    : Colors.grey[300],
+                                size: 48,
+                              ),
+                            );
+                          },
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 32),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF6F6F6),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: TextField(
+                      controller: _feedbackController,
+                      maxLines: 4,
+                      decoration: InputDecoration(
+                        hintText: "Write your review here...",
+                        hintStyle: TextStyle(
+                          color: Colors.grey[400],
+                          fontSize: 14,
+                        ),
+                        border: InputBorder.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: _isSubmitting ? null : _submitFeedback,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF01102B),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: _isSubmitting
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text(
+                              "Submit Feedback",
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
           ),
         ),
       ),
